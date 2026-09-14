@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = ""
-    POSTGRES_DB: str = "sales_ai"
+    POSTGRES_DB: str = "sales_ai_ally"
 
     # Redis
     REDIS_HOST: str = "127.0.0.1"
