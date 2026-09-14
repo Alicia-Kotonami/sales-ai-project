@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import settings
+from app.models.base import Base
+
 
 # 全局异步引擎，连接池自动管理
 engine = create_async_engine(
@@ -24,10 +26,7 @@ AsyncSessionLocal = async_sessionmaker(
     autoflush=False,
 )
 
-# 后面建表模型都继承它
-class Base(DeclarativeBase):
-    """所有 ORM 模型的基类。"""
-    pass
+
 
 # FastAPI 依赖注入用
 async def get_db() -> AsyncSession:
