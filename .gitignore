@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+# 原生venv环境（你不用，注释保留）
+# .venv/
+# venv/
+# env/
+.env
+
+# Conda
+# 👉 只有用 --prefix 在项目本地创建conda环境才启用下面一行，全局conda环境不需要
+# .conda-env/
+
+# IDE - PyCharm
+.idea/
+out/
+build/
+*.iml
+*.iws
+*.ipr
+.idea_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+
+# 【可选推荐追加】测试 & 静态检查缓存
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+## Python
+#__pycache__/
+#*.py[cod]
+#*.egg-info/
+#.env
+#
+## IDE
+#.idea/
+#.vscode/
+#
+## OS
+#.DS_Store
+#Thumbs.db
+#
+## 日志
+#*.log
