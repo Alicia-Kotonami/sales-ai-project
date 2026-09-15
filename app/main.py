@@ -10,7 +10,14 @@ from app.core.middleware import TraceIdMiddleware
 from app.core.response import ok
 from app.db.session import engine
 
+from app.api.v1.router import api_router
+
+
 app = FastAPI(title=settings.APP_NAME, version="0.1.0")
+
+app.include_router(api_router)
+
+
 
 # 中间件：trace_id
 app.add_middleware(TraceIdMiddleware)
