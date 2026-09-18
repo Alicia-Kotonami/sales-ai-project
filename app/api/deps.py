@@ -47,7 +47,7 @@ async def assert_customer_accessible(
 ) -> Customer:
     """
     【客户资源权限校验守卫函数】
-    API-LLD §1.2 权限规则定义
+    API-LLD 1.2 权限规则定义
     权限范围规则：
     - scope=1 self(仅本人): 客户归属owner必须等于当前登录用户id
     - scope=2 region(本区域): 客户所属region_id必须和当前用户region_id一致

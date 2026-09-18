@@ -14,3 +14,24 @@ class ProfileResponse(BaseModel):
     version: int
     sections: dict[str, Any]
     sources: list[ProfileSource] = Field(default_factory=list)
+
+
+class ProfileConfirmRequest(BaseModel):
+    comment: str | None = Field(default=None, max_length=255)
+
+
+class ProfileRejectRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=255)
+
+
+class ProfileEditRequest(BaseModel):
+    sections: dict[str, Any] = Field(
+        description="四类维度：basic / study / preference / followup"
+    )
+
+class ProfileActionResult(BaseModel):
+    profileId: int
+    version: int
+    status: str
+
+
