@@ -1,43 +1,56 @@
 from fastapi import Depends, Header, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from jose import JWTError
+from app.core.config import settings
 from app.core.errors import BizError, ErrorCode
+from app.core.security import decode_access_token
 from app.db.session import get_db
 from app.models import Customer, SysUser
-
 
 async def get_current_user(
     request: Request,
     db: AsyncSession = Depends(get_db),
+    authorization: str | None = Header(default=None),
     x_debug_user_id: int | None = Header(default=None, alias="X-Debug-User-Id"),
 ) -> SysUser:
     """
-    【获取当前登录用户依赖函数】
-    临时版本：从请求头 X-Debug-User-Id 读取用户ID，用于本地调试。
-    后续第13步会替换成真正的JWT token解析逻辑。
-    :param request: FastAPI原始请求对象
-    :param db: 异步数据库会话，由Depends自动注入
-    :param x_debug_user_id: 请求头 X-Debug-User-Id，调试用用户ID，非生产方案
-    :return: SysUser 数据库查询出来的系统用户对象
+        优先解析 Authorization: Bearer <JWT>；
+        若 APP_DEBUG=true 且没有 Authorization，则退回 X-Debug-User-Id；
+        都没有 -> 1002。
     """
-    # 取出调试头里的用户ID
-    user_id = x_debug_user_id
-    # 如果请求头没有携带调试用户ID，抛出未认证业务异常
-    if user_id is None:
-        raise BizError(ErrorCode.UNAUTHENTICATED, "缺少 X-Debug-User-Id（临时调试头）")
 
-    # 构造SQL查询语句：查询SysUser，匹配用户ID，并且用户未被删除
+    user_id: int | None = None
+
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization[7:].strip()
+        try:
+            payload = decode_access_token(token)
+        except JWTError:
+            raise BizError(ErrorCode.UNAUTHENTICATED, "token 无效或已过期")
+        sub = payload.get("sub")
+        if not sub:
+            raise BizError(ErrorCode.UNAUTHENTICATED, "token 缺少 sub")
+        try:
+            user_id = int(sub)
+        except (TypeError, ValueError):
+            raise BizError(ErrorCode.UNAUTHENTICATED, "token sub 非整数")
+
+    elif settings.APP_DEBUG and x_debug_user_id is not None:
+        user_id = x_debug_user_id
+
+    if user_id is None:
+        raise BizError(ErrorCode.UNAUTHENTICATED, "缺少 Authorization 头")
+
     stmt = select(SysUser).where(
         SysUser.id == user_id,
         SysUser.is_deleted.is_(False),
     )
-    # 执行异步SQL，最多返回一条记录，找不到返回None
     user = (await db.execute(stmt)).scalar_one_or_none()
-    # 用户不存在 / 已删除，抛出未认证异常
     if user is None:
         raise BizError(ErrorCode.UNAUTHENTICATED, f"用户 {user_id} 不存在")
-    # 返回查到的用户对象，后续接口可以直接拿到当前用户信息
     return user
+
 
 
 async def assert_customer_accessible(
