@@ -21,6 +21,12 @@ from app.schemas.profile import (
 )
 from app.services.audit_service import write_audit
 
+from app.services.cache_service import (
+    get_profile_cache,
+    invalidate_profile_cache,
+    set_profile_cache,
+)
+
 
 router = APIRouter(prefix="/profiles", tags=["profile"])
 
@@ -51,72 +57,75 @@ async def get_effective_profile(
     4. 按场景脱敏
     """
     customer = await assert_customer_accessible(customerId, db, user)
-
-    # 1) 查生效画像
-    stmt = (
-        select(Profile)
-        .where(
-            Profile.customer_id == customerId,
-            Profile.status.in_([2, 3]),
-            Profile.is_deleted.is_(False),
-        )
-        .order_by(Profile.version.desc())
-        .limit(1)
-    )
-    profile = (await db.execute(stmt)).scalar_one_or_none()
-
     is_owner = customer.owner_user_id == user.id
 
-    if profile is None:
-        # 2) 回退：客户主档最小上下文
-        sections = {
-            "basic": {
-                "student_name": customer.name_encrypted if is_owner else _mask_name(customer.name_encrypted),
-                "grade": customer.grade or "",
-                "school": customer.school or "",
-            }
-        }
-        return ok(
-            ProfileResponse(
-                customerId=customerId,
-                version=0,
-                sections=sections,
-                sources=[],
-            ).model_dump()
-        )
+    # 1) 先读缓存
+    cached = await get_profile_cache(customerId)
 
-    # 3) 有生效画像
-    sections = profile.sections_json or {}
-
-    # 脱敏：他人客户时对 student_name 打码
-    if not is_owner:
-        basic = sections.get("basic") or {}
-        if basic.get("student_name"):
-            basic = {**basic, "student_name": _mask_name(basic["student_name"])}
-            sections = {**sections, "basic": basic}
-
-    # 4) 拼 sources
-    sources: list[ProfileSource] = []
-    field_meta = profile.field_meta_json or {}
-    for field_path, meta in field_meta.items():
-        if not isinstance(meta, dict):
-            continue
-        sources.append(
-            ProfileSource(
-                field=field_path,
-                refs=list(meta.get("refs") or []),
-                confidence=meta.get("confidence"),
+    if cached is None:
+        # 2) 缓存未命中：回源 DB
+        stmt = (
+            select(Profile)
+            .where(
+                Profile.customer_id == customerId,
+                Profile.status.in_([2, 3]),
+                Profile.is_deleted.is_(False),
             )
+            .order_by(Profile.version.desc())
+            .limit(1)
         )
+        profile = (await db.execute(stmt)).scalar_one_or_none()
 
-    return ok(
-        ProfileResponse(
-            customerId=customerId,
-            version=profile.version,
-            sections=sections,
-            sources=sources,
-        ).model_dump()
-    )
+        if profile is None:
+            # 回退到客户主档最小上下文
+            sections = {
+                "basic": {
+                    "student_name": customer.name_encrypted if is_owner else _mask_name(customer.name_encrypted),
+                    "grade": customer.grade or "",
+                    "school": customer.school or "",
+                }
+            }
+            payload = {
+                "customerId": customerId,
+                "version": 0,
+                "sections": sections,
+                "sources": [],
+            }
+        else:
+            sections = profile.sections_json or {}
+            field_meta = profile.field_meta_json or {}
+            sources = [
+                {
+                    "field": k,
+                    "refs": list((v or {}).get("refs") or []),
+                    "confidence": (v or {}).get("confidence"),
+                }
+                for k, v in field_meta.items()
+                if isinstance(v, dict)
+            ]
+            payload = {
+                "customerId": customerId,
+                "version": profile.version,
+                "sections": sections,
+                "sources": sources,
+            }
+
+
+        # 3) 写缓存（存原始数据，脱敏在输出前做）
+        await set_profile_cache(customerId, payload)
+    else:
+        payload = cached
+
+    # 4) 按场景脱敏（对方客户才脱敏）
+    if not is_owner:
+        sections = dict(payload.get("sections") or {})
+        basic = dict(sections.get("basic") or {})
+        if basic.get("student_name"):
+            basic["student_name"] = _mask_name(basic["student_name"])
+            sections["basic"] = basic
+            payload = {**payload, "sections": sections}
+
+    return ok(payload)
 
 
 
@@ -185,7 +194,8 @@ async def confirm_profile(
     )
     await db.commit()
 
-    # TODO(step-14): 清除画像缓存 Redis DEL profile:cache:{customerId}
+    # 已做(step-14): 清除画像缓存 Redis DEL profile:cache:{customerId}
+    await invalidate_profile_cache(customerId)
 
     return ok(
         ProfileActionResult(
@@ -223,6 +233,8 @@ async def reject_profile(
         payload={"reason": body.reason},
     )
     await db.commit()
+
+    await invalidate_profile_cache(customerId)
 
     return ok(
         ProfileActionResult(
@@ -283,6 +295,8 @@ async def edit_profile(
         payload={"diff": diff, "newVersion": new_version},
     )
     await db.commit()
+
+    await invalidate_profile_cache(customerId)
 
     return ok(
         ProfileActionResult(
