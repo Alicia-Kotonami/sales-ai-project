@@ -19,6 +19,20 @@ from app.services.profile_injector import (
     detect_scenario,
     load_profile_for_reply,
 )
+from datetime import datetime, timezone
+
+from fastapi import Body
+from sqlalchemy import update
+
+from app.core.response import ok
+from app.models import AuditLog, SuggestionEvent
+from app.schemas.reply import SuggestFeedbackRequest, SuggestFeedbackResult
+from app.services.audit_service import write_audit
+from app.services.event_bus import publish_event
+
+
+
+
 
 router = APIRouter(prefix="/reply", tags=["reply"])
 
@@ -192,3 +206,117 @@ async def suggest_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+ADOPTION_STREAM = "stream:adoption:recorded"
+
+# 标准化字段
+def _normalize(text: str | None) -> str:
+    return (text or "").strip()
+
+
+def _find_candidate(candidates: list[dict], candidate_id: int) -> dict | None:
+    for item in candidates or []:
+        if item.get("candidateId") == candidate_id:
+            return item
+    return None
+
+
+@router.post("/suggestions/{eventId}/feedback")
+async def suggestion_feedback(
+    eventId: int,
+    body: SuggestFeedbackRequest = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: SysUser = Depends(get_current_user),
+):
+    """
+    R2 采纳 / 拒绝回写。
+    - adopt_and_send_manually -> 1 或 3
+    - reject                   -> 2
+    - ignore                   -> 4
+    """
+    # 1) 查询事件
+    stmt = select(SuggestionEvent).where(
+        SuggestionEvent.id == eventId,
+        SuggestionEvent.is_deleted.is_(False),
+    ).with_for_update()
+    evt = (await db.execute(stmt)).scalar_one_or_none()
+    if evt is None:
+        raise BizError(ErrorCode.NOT_FOUND, "建议事件不存在")
+
+    # 2) 只能自己反馈
+    # 一种情况会发生以下：主管或管理员代操作(还有别的情况，之后自己查)
+    if evt.advisor_user_id != user.id:
+        raise BizError(ErrorCode.FORBIDDEN, "只能反馈自己的建议事件")
+
+    # 3) 已反馈过 -> 2001
+    if evt.action != 0:
+        raise BizError(ErrorCode.STATE_CONFLICT, "该建议已反馈，不可重复")
+
+    # 4) candidateId 必须存在
+    candidate = _find_candidate(evt.candidates_json or [], body.candidateId)
+    if candidate is None:
+        raise BizError(ErrorCode.PARAM_INVALID, "candidateId 不在候选列表内")
+
+    # 5) 计算落库 action
+    if body.action == "adopt_and_send_manually":
+        if not body.finalText or not _normalize(body.finalText):
+            raise BizError(ErrorCode.PARAM_INVALID, "采纳时 finalText 必填")
+        original = _normalize(candidate.get("text"))
+        final = _normalize(body.finalText)
+        action_int = 1 if final == original else 3
+        final_text_value = body.finalText
+    elif body.action == "reject":
+        action_int = 2
+        final_text_value = None
+    else:  # ignore
+        action_int = 4
+        final_text_value = None
+
+    # 6) 更新 suggestion_event
+    now = datetime.now(timezone.utc)
+    await db.execute(
+        update(SuggestionEvent)
+        .where(SuggestionEvent.id == eventId)
+        .values(
+            candidate_id=body.candidateId,
+            action=action_int,
+            final_text=final_text_value,
+            acted_at=now,
+        )
+    )
+
+    # 7) 审计
+    await write_audit(
+        db,
+        actor_id=user.id,
+        action="suggestion_feedback",
+        target_type="suggestion_event",
+        target_id=eventId,
+        payload={
+            "candidateId": body.candidateId,
+            "action": action_int,
+            "rawAction": body.action,
+        },
+    )
+
+    await db.commit()
+
+    # 8) 发布 adoption.recorded 事件
+    await publish_event(
+        ADOPTION_STREAM,
+        {
+            "suggestionEventId": eventId,
+            "advisorUserId": user.id,
+            "customerId": evt.customer_id,
+            "candidateId": body.candidateId,
+            "action": action_int,
+            "actedAt": now.isoformat(),
+        },
+    )
+
+    return ok(
+        SuggestFeedbackResult(eventId=eventId, action=action_int).model_dump()
+    )
+
+

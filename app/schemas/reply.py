@@ -24,11 +24,16 @@ class SuggestDone(BaseModel):
 
 
 class SuggestFeedbackRequest(BaseModel):
-    candidateId: int
+    candidateId: int = Field(gt=0)
     action: Literal[
         "adopt_and_send_manually", "reject", "ignore"
     ]
     finalText: str | None = None
+
+
+class SuggestFeedbackResult(BaseModel):
+    eventId: int
+    action: int
 
 
 class SuggestHistoryItem(BaseModel):
