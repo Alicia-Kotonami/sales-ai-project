@@ -36,3 +36,29 @@ class TagToggleResult(BaseModel):
     customerId: int
     tagId: int
     checked: bool
+
+
+class TagRecommendationItem(BaseModel):
+    action: str        # "check" / "uncheck"
+    tagId: int
+    tagCode: str
+    tagName: str
+    reason: str | None = None
+    confidence: float | None = None
+    evidenceRefs: list[str] = Field(default_factory=list)
+    sopSummary: str | None = None
+
+
+class TagRecommendDone(BaseModel):
+    total: int
+
+
+class TagConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    accepted: bool
+
+
+class TagConfirmResult(BaseModel):
+    suggestionId: int
+    status: int
+    customerTagId: int | None = None

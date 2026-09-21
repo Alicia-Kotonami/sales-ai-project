@@ -53,3 +53,92 @@ async def stream_reply_mock(
                 "data": {"candidateId": idx, "delta": text[i : i + chunk_size]},
             }
             await asyncio.sleep(per_chunk_delay)
+
+
+async def infer_tags_mock(
+    *,
+    profile_sections: dict,
+    selected_tag_ids: set[int],
+    catalog: list[dict],
+) -> list[dict]:
+    """
+    根据画像给出固定标签推荐（Mock）。
+    输入：
+    - profile_sections: 画像 sections
+    - selected_tag_ids: 当前已生效 tag_id 集合
+    - catalog: enabled 标签目录（每项含 tagId / code / name / category）
+    输出：[{action, tagId, reason, confidence, evidenceRefs, sopSummary}]
+    """
+    by_code = {c["code"]: c for c in catalog}
+    results: list[dict] = []
+
+    grade = ((profile_sections.get("basic") or {}).get("grade") or "").upper()
+    weak = ((profile_sections.get("study") or {}).get("weak_subjects") or [])
+    weak_str = "、".join(weak)
+
+    # 1) 学段：G7~G9 -> stage_junior
+    if grade.startswith("G") and grade[1:].isdigit():
+        n = int(grade[1:])
+        if 7 <= n <= 9 and "stage_junior" in by_code:
+            t = by_code["stage_junior"]
+            if t["tagId"] not in selected_tag_ids:
+                results.append({
+                    "action": "check",
+                    "tagId": t["tagId"],
+                    "reason": f"画像学段 {grade} 命中初中",
+                    "confidence": 0.92,
+                    "evidenceRefs": ["profile:basic.grade"],
+                    "sopSummary": None,
+                })
+
+    # 2) 学科：weak_subjects 里含数学 / 物理
+    if "数学" in weak and "subject_math" in by_code:
+        t = by_code["subject_math"]
+        if t["tagId"] not in selected_tag_ids:
+            results.append({
+                "action": "check",
+                "tagId": t["tagId"],
+                "reason": f"薄弱学科包含数学（{weak_str}）",
+                "confidence": 0.88,
+                "evidenceRefs": ["profile:study.weak_subjects"],
+                "sopSummary": None,
+            })
+    if "物理" in weak and "subject_phys" in by_code:
+        t = by_code["subject_phys"]
+        if t["tagId"] not in selected_tag_ids:
+            results.append({
+                "action": "check",
+                "tagId": t["tagId"],
+                "reason": f"薄弱学科包含物理（{weak_str}）",
+                "confidence": 0.85,
+                "evidenceRefs": ["profile:study.weak_subjects"],
+                "sopSummary": None,
+            })
+
+    # 3) 高意向：preference.price_sensitivity=高
+    price = ((profile_sections.get("preference") or {}).get("price_sensitivity") or "")
+    if price == "高" and "intent_high" in by_code:
+        t = by_code["intent_high"]
+        if t["tagId"] not in selected_tag_ids:
+            results.append({
+                "action": "check",
+                "tagId": t["tagId"],
+                "reason": "画像价格敏感度高，近期询问价格与课时",
+                "confidence": 0.80,
+                "evidenceRefs": ["profile:preference.price_sensitivity"],
+                "sopSummary": None,
+            })
+
+    # 4) 取消推荐：已选初中数学但画像里没有数学
+    math_id = by_code.get("subject_math", {}).get("tagId")
+    if math_id and math_id in selected_tag_ids and "数学" not in weak:
+        results.append({
+            "action": "uncheck",
+            "tagId": math_id,
+            "reason": "画像薄弱学科已无数学，建议取消",
+            "confidence": 0.75,
+            "evidenceRefs": ["profile:study.weak_subjects"],
+            "sopSummary": None,
+        })
+
+    return results

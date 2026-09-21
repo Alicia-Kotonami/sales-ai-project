@@ -1,9 +1,13 @@
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, Path, Query
-from sqlalchemy import select
+from fastapi.responses import StreamingResponse
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.redis_client import get_redis
+from app.db.session import AsyncSessionLocal, get_db
 from app.api.deps import assert_customer_accessible, get_current_user
 from app.core.errors import BizError, ErrorCode
 from app.core.response import ok
@@ -14,8 +18,19 @@ from app.schemas.tag import (
     TagCatalogItem,
     TagToggleRequest,
     TagToggleResult,
+    TagConfirmRequest,
+    TagConfirmResult,
+    TagRecommendationItem,
 )
 from app.services.audit_service import write_audit
+
+from app.services.ai_mock import infer_tags_mock
+from app.services.event_bus import publish_event
+from app.services.profile_injector import load_profile_for_reply
+
+
+
+
 
 router = APIRouter(tags=["tag"])
 
@@ -203,3 +218,269 @@ async def toggle_customer_tag(
             customerId=customerId, tagId=tag.id, checked=body.checked
         ).model_dump()
     )
+
+
+TAG_RECOMMEND_STREAM = "stream:tag:recommend-generated"
+ADOPTION_STREAM = "stream:adoption:recorded"
+
+
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+# ============ T1 标签推荐（SSE） ============
+
+@router.post("/tags/recommendations/stream")
+async def tag_recommend_stream(
+    body: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: SysUser = Depends(get_current_user),
+):
+    """
+    T1：AI 标签推荐（SSE）。
+    body：{"customerId": 1, "conversationId": 1}
+    """
+    customer_id = int(body.get("customerId") or 0)
+    if customer_id <= 0:
+        raise BizError(ErrorCode.PARAM_INVALID, "customerId 必填")
+
+    customer = await assert_customer_accessible(customer_id, db, user)
+
+    # 1) 加载 enabled 目录（强制入参）
+    cat_stmt = select(Tag).where(
+        Tag.enabled.is_(True), Tag.is_deleted.is_(False)
+    ).order_by(Tag.category, Tag.sort_order, Tag.id)
+    catalog_tags = (await db.execute(cat_stmt)).scalars().all()
+    catalog = [
+        {
+            "tagId": t.id,
+            "code": t.code,
+            "name": t.name,
+            "category": t.category,
+            "sopName": t.sop_name,
+        }
+        for t in catalog_tags
+    ]
+    catalog_ids = {t["tagId"] for t in catalog}
+
+    # 2) 已生效标签
+    sel_stmt = select(CustomerTag.tag_id).where(
+        CustomerTag.customer_id == customer_id,
+        CustomerTag.status == 1,
+        CustomerTag.is_deleted.is_(False),
+    )
+    selected_tag_ids = set((await db.execute(sel_stmt)).scalars().all())
+
+    # 3) 画像
+    injected = await load_profile_for_reply(db, customer_id)
+
+    # 4) Mock AI 推理
+    raw_recs = await infer_tags_mock(
+        profile_sections=injected.sections,
+        selected_tag_ids=selected_tag_ids,
+        catalog=catalog,
+    )
+
+    # 5) 目录外过滤 + 写入 customer_tag + SSE
+    async def event_generator():
+        accepted_rows: list[CustomerTag] = []
+        dropped: list[dict] = []
+
+        async with AsyncSessionLocal() as s:
+            for rec in raw_recs:
+                tag_id = rec["tagId"]
+                if tag_id not in catalog_ids:
+                    dropped.append(rec)
+                    continue
+
+                action_int = 1 if rec["action"] == "check" else 2
+                ct = CustomerTag(
+                    customer_id=customer_id,
+                    tag_id=tag_id,
+                    action=action_int,
+                    source=1,          # AI 推荐
+                    reason=rec.get("reason"),
+                    confidence=rec.get("confidence"),
+                    evidence_refs=rec.get("evidenceRefs") or [],
+                    status=0,          # 待确认
+                )
+                s.add(ct)
+                accepted_rows.append(ct)
+
+            await s.commit()
+            for ct in accepted_rows:
+                await s.refresh(ct)
+
+            # 6) 目录外结果写审计
+            if dropped:
+                from app.services.audit_service import write_audit
+                for d in dropped:
+                    await write_audit(
+                        s,
+                        actor_id=0,   # AI 哨兵
+                        action="tag.drop_out_of_catalog",
+                        target_type="tag",
+                        target_id=None,
+                        payload=d,
+                    )
+                await s.commit()
+
+        # 7) SSE 输出
+        tag_by_id = {t["tagId"]: t for t in catalog}
+        for ct in accepted_rows:
+            t = tag_by_id.get(ct.tag_id) or {}
+            item = TagRecommendationItem(
+                action="check" if ct.action == 1 else "uncheck",
+                tagId=ct.tag_id,
+                tagCode=t.get("code") or "",
+                tagName=t.get("name") or "",
+                reason=ct.reason,
+                confidence=float(ct.confidence) if ct.confidence is not None else None,
+                evidenceRefs=list(ct.evidence_refs or []),
+                sopSummary=t.get("sopName"),
+            )
+            yield _sse("tag_recommend", item.model_dump())
+
+        yield _sse("tag_recommend_done", {"total": len(accepted_rows)})
+
+        # 8) 发事件
+        await publish_event(
+            TAG_RECOMMEND_STREAM,
+            {
+                "customerId": customer_id,
+                "advisorUserId": user.id,
+                "total": len(accepted_rows),
+            },
+        )
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ============ T2 确认推荐 ============
+
+@router.post("/tags/recommendations/{recommendationId}/confirm")
+async def confirm_tag_recommendation(
+    recommendationId: int = Path(..., gt=0),
+    body: TagConfirmRequest = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: SysUser = Depends(get_current_user),
+):
+    """T2：确认 / 拒绝 AI 标签推荐。"""
+    # 1) 锁推荐行
+    stmt = (
+        select(CustomerTag)
+        .where(
+            CustomerTag.id == recommendationId,
+            CustomerTag.is_deleted.is_(False),
+        )
+        .with_for_update()
+    )
+    rec = (await db.execute(stmt)).scalar_one_or_none()
+    if rec is None:
+        raise BizError(ErrorCode.NOT_FOUND, "标签推荐不存在")
+    if rec.status != 0:
+        raise BizError(ErrorCode.STATE_CONFLICT, "该推荐已处理")
+
+    # 2) 校验 tag 仍 enabled
+    tag_stmt = select(Tag).where(
+        Tag.id == rec.tag_id,
+        Tag.enabled.is_(True),
+        Tag.is_deleted.is_(False),
+    )
+    tag = (await db.execute(tag_stmt)).scalar_one_or_none()
+    if tag is None:
+        raise BizError(ErrorCode.TAG_NOT_IN_CATALOG, "标签已停用或不存在")
+
+    customer = await assert_customer_accessible(rec.customer_id, db, user)
+    if customer.owner_user_id != user.id:
+        raise BizError(ErrorCode.FORBIDDEN, "仅客户当前 owner 可确认推荐")
+
+    now = datetime.now(timezone.utc)
+    customer_tag_id: int | None = None
+
+    if not body.accepted:
+        rec.status = 2
+        await write_audit(
+            db,
+            actor_id=user.id,
+            action="tag.recommend.reject",
+            target_type="customer_tag",
+            target_id=rec.id,
+            payload={"tagId": rec.tag_id},
+        )
+    else:
+        if rec.action == 1:  # 勾选
+            # 同类互斥
+            if tag.category and tag.max_per_customer >= 1:
+                cnt_stmt = (
+                    select(CustomerTag.id)
+                    .join(Tag, Tag.id == CustomerTag.tag_id)
+                    .where(
+                        CustomerTag.customer_id == rec.customer_id,
+                        CustomerTag.status == 1,
+                        CustomerTag.is_deleted.is_(False),
+                        Tag.category == tag.category,
+                        Tag.id != tag.id,
+                    )
+                )
+                same_ids = (await db.execute(cnt_stmt)).scalars().all()
+                if len(same_ids) >= tag.max_per_customer:
+                    raise BizError(
+                        ErrorCode.PARAM_INVALID,
+                        f"同类标签已达上限（{tag.category} max={tag.max_per_customer}），请先取消互斥项",
+                    )
+            rec.status = 1
+            rec.applied_at = now
+            customer_tag_id = rec.id
+
+        elif rec.action == 2:  # 取消勾选
+            # 把对应已生效行 status=1 -> 3
+            await db.execute(
+                update(CustomerTag)
+                .where(
+                    CustomerTag.customer_id == rec.customer_id,
+                    CustomerTag.tag_id == rec.tag_id,
+                    CustomerTag.status == 1,
+                    CustomerTag.is_deleted.is_(False),
+                )
+                .values(status=3)
+            )
+            rec.status = 1
+            rec.applied_at = now
+            customer_tag_id = rec.id
+
+        await write_audit(
+            db,
+            actor_id=user.id,
+            action="tag.recommend.confirm",
+            target_type="customer_tag",
+            target_id=rec.id,
+            payload={"tagId": rec.tag_id, "action": rec.action},
+        )
+
+    await db.commit()
+
+    # 3) adoption.recorded 事件
+    await publish_event(
+        ADOPTION_STREAM,
+        {
+            "type": "tag",
+            "action": "confirm" if body.accepted else "reject",
+            "customerId": rec.customer_id,
+            "recommendationId": rec.id,
+            "tagId": rec.tag_id,
+        },
+    )
+
+    return ok(
+        TagConfirmResult(
+            suggestionId=rec.id,
+            status=rec.status,
+            customerTagId=customer_tag_id,
+        ).model_dump()
+    )
+
