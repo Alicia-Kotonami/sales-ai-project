@@ -1,4 +1,3 @@
-import asyncio
 import json
 import time
 from typing import AsyncGenerator
@@ -14,11 +13,15 @@ from app.core.redis_client import get_redis
 from app.db.session import AsyncSessionLocal, get_db
 from app.models import Conversation, Message, Order, SysUser
 from app.schemas.reply import SuggestDone, SuggestRequest
-from app.services.ai_mock import stream_reply_mock
+
 from app.services.profile_injector import (
     detect_scenario,
     load_profile_for_reply,
 )
+from app.services.audit_service import write_audit
+from app.services.event_bus import publish_event
+from app.services.ai_gateway import infer_reply_stream
+
 from datetime import datetime, timezone
 
 from fastapi import Body
@@ -27,8 +30,6 @@ from sqlalchemy import update
 from app.core.response import ok
 from app.models import AuditLog, SuggestionEvent
 from app.schemas.reply import SuggestFeedbackRequest, SuggestFeedbackResult
-from app.services.audit_service import write_audit
-from app.services.event_bus import publish_event
 
 
 
@@ -117,6 +118,12 @@ async def suggest_stream(
     # 5) 生成 event 记录（先 flush 拿 id）
     from app.models import SuggestionEvent  # 局部导入避免循环
 
+    current_message_dict = {
+        "type": current.type,
+        "text": current.text,
+        "audioUrl": current.audioUrl,
+    }
+
     start_ts = time.perf_counter()
 
     async def event_generator() -> AsyncGenerator[str, None]:
@@ -129,7 +136,13 @@ async def suggest_stream(
 
             # 5.2 流式返回候选
             full_text = {1: "", 2: ""}
-            async for item in stream_reply_mock(scenario_tags=scenario_tags):
+            async for item in infer_reply_stream(
+                    conversation_id=body.conversationId,
+                    customer_id=body.customerId,
+                    current_message=current_message_dict,
+                    profile=injected.sections,
+                    scenario_tags=scenario_tags,
+            ):
                 evt = item["event"]
                 data = item["data"]
                 cid = data["candidateId"]
@@ -189,9 +202,17 @@ async def suggest_stream(
                 )
                 await s.commit()
 
-        except Exception as exc:  # noqa: BLE001
-            err = {"code": int(ErrorCode.AI_BUSY), "message": f"AI 暂忙: {exc}"}
-            yield _sse("suggest_error", err)
+        except BizError as exc:
+            yield _sse("suggest_error", {"code": exc.code, "message": exc.message})
+            return
+        except Exception as exc:
+            yield _sse("suggest_error", {"code": int(ErrorCode.UNKNOWN), "message": str(exc)})
+            return
+
+        # except Exception as exc:  # noqa: BLE001
+        #     err = {"code": int(ErrorCode.AI_BUSY), "message": f"AI 暂忙: {exc}"}
+        #     yield _sse("suggest_error", err)
+
         finally:
             try:
                 await redis.delete(replay_key)

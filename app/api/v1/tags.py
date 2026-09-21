@@ -24,7 +24,8 @@ from app.schemas.tag import (
 )
 from app.services.audit_service import write_audit
 
-from app.services.ai_mock import infer_tags_mock
+# from app.services.ai_mock import infer_tags_mock
+from app.services.ai_gateway import infer_tags
 from app.services.event_bus import publish_event
 from app.services.profile_injector import load_profile_for_reply
 
@@ -275,11 +276,16 @@ async def tag_recommend_stream(
     injected = await load_profile_for_reply(db, customer_id)
 
     # 4) Mock AI 推理
-    raw_recs = await infer_tags_mock(
+    raw_recs = await infer_tags(
         profile_sections=injected.sections,
         selected_tag_ids=selected_tag_ids,
         catalog=catalog,
     )
+    # raw_recs = await infer_tags_mock(
+    #     profile_sections=injected.sections,
+    #     selected_tag_ids=selected_tag_ids,
+    #     catalog=catalog,
+    # )
 
     # 5) 目录外过滤 + 写入 customer_tag + SSE
     async def event_generator():

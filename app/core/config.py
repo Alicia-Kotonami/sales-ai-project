@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     AI_GATEWAY_BASE_URL: str = "http://127.0.0.1:9000"
     AI_TIMEOUT_SECONDS: int = 3
 
+    # AI 网关
+    AI_MODE: str = "mock"                       # mock | remote
+    AI_REMOTE_BASE_URL: str = "http://127.0.0.1:9000"
+    AI_TIMEOUT_SECONDS: int = 3
+
     # 企业微信
     WECOM_CORP_ID: str = ""
     WECOM_AGENT_ID: str = ""
