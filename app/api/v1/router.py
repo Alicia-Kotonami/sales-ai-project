@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    admin_customers,
     admin_dashboard,
     auth,
     profiles,
@@ -18,5 +19,6 @@ api_router.include_router(tags.router)
 api_router.include_router(schedule.router)
 api_router.include_router(users.router)
 api_router.include_router(admin_dashboard.router)
+api_router.include_router(admin_customers.router)
 
 __all__ = ["api_router"]
