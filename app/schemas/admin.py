@@ -1,7 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, ConfigDict, Field
 
 class AdminCustomerItem(BaseModel):
     id: int
@@ -35,3 +34,16 @@ class CommunicationConversation(BaseModel):
     customerId: int
     advisorUserId: int | None = None
     messages: list[CommunicationMessage] = Field(default_factory=list)
+
+
+class TransferOwnerRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    newOwnerUserId: int = Field(gt=0)
+    reason: str = Field(min_length=1, max_length=255)
+
+
+class TransferOwnerResult(BaseModel):
+    customerId: int
+    prevOwnerUserId: int | None = None
+    ownerUserId: int

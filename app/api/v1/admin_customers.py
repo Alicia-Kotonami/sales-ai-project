@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Depends, Path, Query, Body
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +15,14 @@ from app.schemas.admin import (
 )
 from app.services.audit_service import write_audit
 from app.services.masking import mask_name, mask_phone
+
+from sqlalchemy import update
+
+from app.models import ScheduleTask
+from app.schemas.admin import TransferOwnerRequest, TransferOwnerResult
+from app.services.event_bus import publish_event
+
+
 
 router = APIRouter(prefix="/admin/customers", tags=["admin-customer"])
 
@@ -212,3 +220,108 @@ async def admin_get_communications(
     ]
 
     return ok({"list": data})
+
+
+# =============== A10 客户交接（离职场景） =====================
+
+
+OWNER_CHANGED_STREAM = "stream:customer:owner-changed"
+
+
+@router.post("/{customerId}/transfer-owner")
+async def transfer_owner(
+    customerId: int = Path(..., gt=0),
+    body: TransferOwnerRequest = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: SysUser = Depends(get_current_user),
+):
+    """
+    A10：客户交接（离职场景）。
+    - 事务：customer.prev_owner_user_id / owner_user_id + schedule_task.advisor_user_id
+    - 提交后：发 stream:customer:owner-changed 事件
+    """
+    role_code = await _require_supervisor_or_admin(db, user)
+
+    # 1) 锁客户
+    c_stmt = (
+        select(Customer)
+        .where(Customer.id == customerId, Customer.is_deleted.is_(False))
+        .with_for_update()
+    )
+    customer = (await db.execute(c_stmt)).scalar_one_or_none()
+    if customer is None:
+        raise BizError(ErrorCode.NOT_FOUND, "客户不存在")
+
+    # 2) 数据范围：主管仅本 region
+    if role_code == "supervisor" and customer.region_id != user.region_id:
+        raise BizError(ErrorCode.FORBIDDEN, "无权交接该客户")
+
+    # 3) 新顾问校验
+    if body.newOwnerUserId == customer.owner_user_id:
+        raise BizError(ErrorCode.PARAM_INVALID, "新顾问不能与当前 owner 相同")
+
+    n_stmt = select(SysUser).where(
+        SysUser.id == body.newOwnerUserId,
+        SysUser.is_deleted.is_(False),
+    )
+    new_owner = (await db.execute(n_stmt)).scalar_one_or_none()
+    if new_owner is None:
+        raise BizError(ErrorCode.NOT_FOUND, "新顾问不存在")
+    if new_owner.status != 1:
+        raise BizError(ErrorCode.PARAM_INVALID, "新顾问不在职")
+    if role_code == "supervisor" and new_owner.region_id != user.region_id:
+        raise BizError(ErrorCode.FORBIDDEN, "新顾问不在本区域")
+
+    prev_owner_id = customer.owner_user_id
+
+    # 4) 更新 customer
+    customer.prev_owner_user_id = prev_owner_id
+    customer.owner_user_id = body.newOwnerUserId
+
+    # 5) 未完成日程一并转移（0 待确认 / 1 已确认 / 4 已调整）
+    await db.execute(
+        update(ScheduleTask)
+        .where(
+            ScheduleTask.customer_id == customerId,
+            ScheduleTask.status.in_([0, 1, 4]),
+            ScheduleTask.is_deleted.is_(False),
+        )
+        .values(advisor_user_id=body.newOwnerUserId)
+    )
+
+    # 6) 审计
+    await write_audit(
+        db,
+        actor_id=user.id,
+        action="customer.transfer",
+        target_type="customer",
+        target_id=customerId,
+        payload={
+            "from": prev_owner_id,
+            "to": body.newOwnerUserId,
+            "reason": body.reason,
+        },
+    )
+
+    await db.commit()
+
+    # 7) 提交后发事件
+    await publish_event(
+        OWNER_CHANGED_STREAM,
+        {
+            "customerId": customerId,
+            "from": prev_owner_id,
+            "to": body.newOwnerUserId,
+            "reason": body.reason,
+        },
+    )
+
+    return ok(
+        TransferOwnerResult(
+            customerId=customerId,
+            prevOwnerUserId=prev_owner_id,
+            ownerUserId=body.newOwnerUserId,
+        ).model_dump()
+    )
+
+
