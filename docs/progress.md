@@ -46,3 +46,20 @@
   - audioUrl 企业对象存储前缀校验未做（配置项文档未给）
   - 同类场景缓存降级未做，熔断只返回 5001/5002（按 task C3）
 
+## 阶段 D：企业微信对接
+
+- 完成时间：2026-09-22
+- commit：`a5540e2`
+- 内容：
+  - `wecom_client.py` 为唯一出口：验签解密、OAuth getuserinfo、`oa/schedule/add|update`；拦截 `message/send` 等代发路径
+  - D1 `GET|POST /api/v1/wecom/callback`：验签失败 9001；成功 GET 回明文 echostr、POST 打桩 `ok`
+  - D2 `POST /api/v1/auth/wecom-oauth`：code 换 JWT；未配凭据且 APP_DEBUG 时 code 当 wechat_userid
+  - D3 S5 不再在接口内造 fake id，只把 `calendar_title` 交给客户端；失败不改本地任务
+- 测试：
+  - `python -m scripts.verify_wecom` 通过（验签 9001、禁止代发、mock gettoken/OAuth/日历 add+update）
+  - ASGI 冒烟：回调 GET/POST、OAuth 顾问 JWT、S2+S5（无凭据 debug 打桩 `wecom-cal-{id}`）
+- 遗留问题：
+  - POST 回调用 `ok`（task D1）；企微官方成功字是 `success`，接真实回调前需确认
+  - 无 CORP_ID/SECRET 时日历不打 qyapi，仅 APP_DEBUG 客户端内打桩
+
+
