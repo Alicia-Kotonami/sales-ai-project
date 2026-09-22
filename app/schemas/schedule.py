@@ -41,3 +41,22 @@ class ScheduleTaskItem(BaseModel):
     priority: int | None = None
     status: int
     wechatCalendarId: str | None = None
+
+
+class ScheduleUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dueAt: str | None = None
+    priority: int | None = Field(default=None, ge=0, le=3)
+    title: str | None = Field(default=None, max_length=255)
+    status: int | None = Field(default=None, ge=2, le=3)   # 只允许 2 完成 / 3 取消
+
+
+class NotificationPreferenceItem(BaseModel):
+    prefKey: str
+    prefValue: str
+
+
+class NotificationPreferenceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    items: list[NotificationPreferenceItem] = Field(min_length=1)

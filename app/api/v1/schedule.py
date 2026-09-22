@@ -13,7 +13,7 @@ from app.schemas.schedule import (
     ScheduleCreateRequest,
     ScheduleParseCandidate,
     ScheduleParseRequest,
-    ScheduleTaskItem,
+    ScheduleTaskItem, ScheduleUpdateRequest,
 )
 from app.services.ai_gateway import parse_time
 from app.services.audit_service import write_audit
@@ -251,3 +251,164 @@ async def today_tasks(
             "overdueCnt": overdue_cnt,
         }
     )
+
+
+
+from sqlalchemy import update
+
+from app.models import SysUser as _SysUser  # 避免重复 import 报错；顶部其实已 import
+
+NOTIFY_PREF_WHITELIST = {
+    "notify.p0.channel",
+    "notify.p1.channel",
+    "notify.p2.channel",
+    "notify.p3.channel",
+}
+
+
+# ============ S3 调整待办 ============
+
+@router.put("/tasks/{taskId}")
+async def update_schedule_task(
+    taskId: int,
+    body: ScheduleUpdateRequest = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: SysUser = Depends(get_current_user),
+):
+    """
+    S3：调整待办。
+    仅允许改 dueAt / priority / title / status(2|3)。
+    改 title 时同步重算 calendar_title（仍脱敏）。
+    """
+    stmt = (
+        select(ScheduleTask)
+        .where(
+            ScheduleTask.id == taskId,
+            ScheduleTask.is_deleted.is_(False),
+        )
+        .with_for_update()
+    )
+    task = (await db.execute(stmt)).scalar_one_or_none()
+    if task is None:
+        raise BizError(ErrorCode.NOT_FOUND, "待办不存在")
+    if task.advisor_user_id != user.id:
+        raise BizError(ErrorCode.FORBIDDEN, "只能调整自己的待办")
+
+    # 已完成/已取消，不允许再改
+    if task.status in (2, 3) and body.status is None:
+        raise BizError(ErrorCode.STATE_CONFLICT, "终态待办不可再调整")
+    if body.status is not None and task.status in (2, 3):
+        raise BizError(ErrorCode.STATE_CONFLICT, "终态待办不可再流转")
+
+    # 客户脱敏用，只为了算 calendar_title
+    cust = (await db.execute(
+        select(Customer).where(Customer.id == task.customer_id)
+    )).scalar_one_or_none()
+
+    if body.dueAt is not None:
+        try:
+            new_due = datetime.fromisoformat(body.dueAt)
+            if new_due.tzinfo is None:
+                new_due = new_due.replace(tzinfo=CN_TZ)
+        except ValueError:
+            raise BizError(ErrorCode.PARAM_INVALID, "dueAt 格式非法")
+        task.due_at = new_due
+
+    if body.priority is not None:
+        task.priority = body.priority
+
+    if body.title is not None:
+        task.title = body.title
+        task.calendar_title = _build_calendar_title(
+            customer_name=cust.name_encrypted if cust else None,
+            type_int=task.type or 4,
+        )
+
+    if body.status is not None:
+        task.status = body.status
+
+    # 只有调整时间（没有直接改状态）时，置为 4 已调整
+    if body.dueAt is not None and body.status is None:
+        task.status = 4
+
+    await write_audit(
+        db,
+        actor_id=user.id,
+        action="schedule.update",
+        target_type="schedule_task",
+        target_id=task.id,
+        payload={
+            "dueAt": body.dueAt,
+            "priority": body.priority,
+            "title": body.title,
+            "status": body.status,
+        },
+    )
+    await db.commit()
+    await db.refresh(task)
+
+    return ok(
+        {
+            "taskId": task.id,
+            "status": task.status,
+            "title": task.title,
+            "calendarTitle": task.calendar_title,
+            "dueAt": task.due_at.isoformat() if task.due_at else None,
+            "priority": task.priority,
+        }
+    )
+
+
+# ============ S5 同步企微日历（打桩） ============
+
+@router.post("/tasks/{taskId}/sync-wechat")
+async def sync_wechat_calendar(
+    taskId: int,
+    db: AsyncSession = Depends(get_db),
+    user: SysUser = Depends(get_current_user),
+):
+    """
+    S5：同步企微日历。
+    V1 打桩：不真调企微，只生成一个模拟 wechat_calendar_id。
+    关键红线：请求体只用 calendar_title，禁止用 title（内含全名）。
+    """
+    stmt = (
+        select(ScheduleTask)
+        .where(
+            ScheduleTask.id == taskId,
+            ScheduleTask.is_deleted.is_(False),
+        )
+        .with_for_update()
+    )
+    task = (await db.execute(stmt)).scalar_one_or_none()
+    if task is None:
+        raise BizError(ErrorCode.NOT_FOUND, "待办不存在")
+    if task.advisor_user_id != user.id:
+        raise BizError(ErrorCode.FORBIDDEN, "只能同步自己的待办")
+    if task.status not in (1, 4):
+        raise BizError(ErrorCode.STATE_CONFLICT, "仅待确认/已调整的待办可同步")
+
+    # —— 打桩：真实场景这里应调企微日历 API ——
+    # 传参只能用 calendar_title，不能用 title
+    calendar_title = task.calendar_title or "跟进"
+    fake_id = f"wecom-cal-{task.id}"
+
+    task.wechat_calendar_id = fake_id
+
+    await write_audit(
+        db,
+        actor_id=user.id,
+        action="schedule.sync_wechat",
+        target_type="schedule_task",
+        target_id=task.id,
+        # 审计只落脱敏标题
+        payload={"calendarTitle": calendar_title, "wechatCalendarId": fake_id},
+    )
+    await db.commit()
+
+    return ok({"taskId": task.id, "wechatCalendarId": fake_id})
+
+
+# ============ S6 提醒偏好 ============
+
+# 放到 users.py 里了
