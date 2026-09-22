@@ -12,10 +12,12 @@ from app.api.v1 import (
     schedule,
     tags,
     users,
+    wecom,
 )
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router)
+api_router.include_router(wecom.router)
 api_router.include_router(profiles.router)
 api_router.include_router(reply.router)
 api_router.include_router(tags.router)

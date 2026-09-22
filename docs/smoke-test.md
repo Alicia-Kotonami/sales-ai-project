@@ -108,3 +108,34 @@ python -m uvicorn scripts.mock_ai_remote:app --host 127.0.0.1 --port 9000
 
 远端路径：`POST /v1/reply/stream`、`/v1/tags/recommend`、`/v1/schedules/parse`、`/v1/asr`。ASR `audioUrl` 含 `fail` 时打桩返回失败，R1 应 SSE `suggest_error` `code=5003`。
 
+## 阶段 D 企业微信
+
+默认未配 `WECOM_SECRET` 时，回调/OAuth 走 debug 打桩。日历 HTTP 契约用 `python -m scripts.verify_wecom`。
+
+```bash
+# D1 GET 回调 URL 验证（APP_DEBUG 且未配 Token 时原样回 echostr）
+curl -s "http://127.0.0.1:8000/api/v1/wecom/callback?echostr=ping-ok"
+
+# D1 POST 回调打桩（应纯文本 ok）
+curl -s -X POST http://127.0.0.1:8000/api/v1/wecom/callback -d "<xml></xml>"
+
+# D2 OAuth：无凭据时 code 当作 wechat_userid（顾问 wx_advisor_002）
+curl -s -H "Content-Type: application/json" \
+  http://127.0.0.1:8000/api/v1/auth/wecom-oauth \
+  -d "{\"code\":\"wx_advisor_002\"}"
+
+# D2 缺 code 应 1001
+curl -s -H "Content-Type: application/json" \
+  http://127.0.0.1:8000/api/v1/auth/wecom-oauth \
+  -d "{}"
+
+# S5 同步企微日历（顾问客户 3；先 S2 拿到 taskId 再替换）
+curl -s -X POST -H "X-Debug-User-Id: 2" -H "Content-Type: application/json" \
+  http://127.0.0.1:8000/api/v1/schedules/tasks \
+  -d "{\"customerId\":3,\"type\":1,\"title\":\"试听回访\",\"dueAt\":\"2026-09-23T20:00:00+08:00\",\"priority\":1}"
+
+curl -s -X POST -H "X-Debug-User-Id: 2" \
+  http://127.0.0.1:8000/api/v1/schedules/tasks/TASK_ID/sync-wechat
+```
+
+

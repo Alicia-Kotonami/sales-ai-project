@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     WECOM_CORP_ID: str = ""
     WECOM_AGENT_ID: str = ""
     WECOM_SECRET: str = ""
+    WECOM_CALLBACK_TOKEN: str = ""
+    WECOM_ENCODING_AES_KEY: str = ""
+    WECOM_API_BASE_URL: str = "https://qyapi.weixin.qq.com"
 
     # 读取 .env
     model_config = SettingsConfigDict(

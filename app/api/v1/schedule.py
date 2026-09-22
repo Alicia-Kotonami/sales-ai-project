@@ -18,6 +18,7 @@ from app.schemas.schedule import (
 from app.services.ai_gateway import parse_time
 from app.services.audit_service import write_audit
 from app.services.event_bus import publish_event
+from app.services import wecom_client
 
 router = APIRouter(prefix="/schedules", tags=["schedule"])
 
@@ -359,7 +360,7 @@ async def update_schedule_task(
     )
 
 
-# ============ S5 同步企微日历（打桩） ============
+# ============ S5 同步企微日历 ============
 
 @router.post("/tasks/{taskId}/sync-wechat")
 async def sync_wechat_calendar(
@@ -368,9 +369,8 @@ async def sync_wechat_calendar(
     user: SysUser = Depends(get_current_user),
 ):
     """
-    S5：同步企微日历。
-    V1 打桩：不真调企微，只生成一个模拟 wechat_calendar_id。
-    关键红线：请求体只用 calendar_title，禁止用 title（内含全名）。
+    S5：同步企微日历。只走 wecom_client，summary 只用 calendar_title。
+    失败不改本地 wechat_calendar_id，可重试。
     """
     stmt = (
         select(ScheduleTask)
@@ -387,13 +387,19 @@ async def sync_wechat_calendar(
         raise BizError(ErrorCode.FORBIDDEN, "只能同步自己的待办")
     if task.status not in (1, 4):
         raise BizError(ErrorCode.STATE_CONFLICT, "仅待确认/已调整的待办可同步")
+    if task.due_at is None:
+        raise BizError(ErrorCode.PARAM_INVALID, "待办缺少 dueAt，无法同步日历")
 
-    # —— 打桩：真实场景这里应调企微日历 API ——
-    # 传参只能用 calendar_title，不能用 title
     calendar_title = task.calendar_title or "跟进"
-    fake_id = f"wecom-cal-{task.id}"
+    schedule_id = await wecom_client.upsert_schedule(
+        wechat_userid=user.wechat_userid,
+        calendar_title=calendar_title,
+        due_at=task.due_at,
+        existing_schedule_id=task.wechat_calendar_id,
+        stub_key=task.id,
+    )
 
-    task.wechat_calendar_id = fake_id
+    task.wechat_calendar_id = schedule_id
 
     await write_audit(
         db,
@@ -401,12 +407,11 @@ async def sync_wechat_calendar(
         action="schedule.sync_wechat",
         target_type="schedule_task",
         target_id=task.id,
-        # 审计只落脱敏标题
-        payload={"calendarTitle": calendar_title, "wechatCalendarId": fake_id},
+        payload={"calendarTitle": calendar_title, "wechatCalendarId": schedule_id},
     )
     await db.commit()
 
-    return ok({"taskId": task.id, "wechatCalendarId": fake_id})
+    return ok({"taskId": task.id, "wechatCalendarId": schedule_id})
 
 
 # ============ S6 提醒偏好 ============
