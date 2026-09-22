@@ -34,6 +34,9 @@ Thumbs.db
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.coverage
+htmlcov/
+coverage.xml
 
 # 一期文档目录
 一期/

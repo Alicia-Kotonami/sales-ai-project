@@ -12,6 +12,48 @@ curl -s http://127.0.0.1:8000/health/db
 curl -s http://127.0.0.1:8000/health/redis
 ```
 
+一键回归（阶段 F）：后端须已在 `8000` 监听。Git Bash 或 conda 下：
+
+```bash
+bash scripts/smoke_test.sh
+# 或
+python -m scripts.smoke_test
+```
+
+PowerShell 不要用 `curl -d "{\"k\":1}"`，冒烟脚本用 httpx 发 JSON。
+
+## 历史接口（画像 / 标签 / 日程 / 看板 / 登录）
+
+顾问只能打客户 3。下列 GET 为只读；R2 需要 R1 返回的 eventId，见 pytest。
+
+```bash
+# 开发登录
+curl -s -H "Content-Type: application/json" \
+  http://127.0.0.1:8000/api/v1/auth/login \
+  -d "{\"wechat_userid\":\"wx_advisor_002\"}"
+
+# P1 生效画像
+curl -s -H "X-Debug-User-Id: 2" http://127.0.0.1:8000/api/v1/profiles/3
+curl -s -H "X-Debug-User-Id: 2" http://127.0.0.1:8000/api/v1/profiles/1
+
+# T0 / T3
+curl -s -H "X-Debug-User-Id: 2" http://127.0.0.1:8000/api/v1/tags/catalog
+curl -s -H "X-Debug-User-Id: 2" http://127.0.0.1:8000/api/v1/customers/3/tags
+
+# S4 今日任务
+curl -s -H "X-Debug-User-Id: 2" http://127.0.0.1:8000/api/v1/schedules/today
+
+# A3 / A4 / A9
+curl -s -H "X-Debug-User-Id: 1" "http://127.0.0.1:8000/api/v1/admin/customers?page=1&pageSize=20&ownerUserId=2"
+curl -s -H "X-Debug-User-Id: 1" http://127.0.0.1:8000/api/v1/admin/customers/3/communications
+curl -s -H "X-Debug-User-Id: 1" http://127.0.0.1:8000/api/v1/admin/dashboard/adoption-rate
+
+# S6 提醒偏好
+curl -s -X PUT -H "X-Debug-User-Id: 2" -H "Content-Type: application/json" \
+  http://127.0.0.1:8000/api/v1/users/me/notification-preference \
+  -d "{\"items\":[{\"prefKey\":\"notify.p0.channel\",\"prefValue\":\"sidebar\"}]}"
+```
+
 ## 阶段 B 管理后台
 
 ```bash

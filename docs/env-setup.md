@@ -52,6 +52,14 @@ AI 默认 `AI_MODE=mock`，不打真实模型。切 `remote` 时业务层经 `ap
 
 ```bash
 pip install -r requirements.txt
+pip install -r requirements-dev.txt   # pytest / 覆盖率，仅开发
+```
+
+接口测试（conda `RAG_study`，连 `.env` 的 `salesai-ally`）：
+
+```bash
+pytest
+python -m scripts.smoke_test   # 需要本机 8000 已启动
 ```
 
 ## 6. 数据库迁移（唯一建表方式）

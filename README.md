@@ -58,3 +58,14 @@ npm run dev
 ```
 
 打开 `http://127.0.0.1:5173/?customerId=3&conversationId=2`，开发登录 `wx_advisor_002`。顾问只能访问客户 3 / 会话 2。发送只发生在企微原生窗口，侧边栏禁止代发。
+
+## 测试
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+python -m scripts.smoke_test   # 需本机 8000 已启动
+```
+
+核心模块（`app/api`、`app/services`、`app/core`）覆盖率门槛 70%，见 `pytest.ini`。
+

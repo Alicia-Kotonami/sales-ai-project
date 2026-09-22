@@ -1,0 +1,13 @@
+[run]
+branch = True
+concurrency = thread,greenlet
+source =
+    app/api
+    app/services
+    app/core
+omit =
+    */__pycache__/*
+
+[report]
+fail_under = 70
+show_missing = True
