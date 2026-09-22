@@ -103,4 +103,19 @@
   - 本机 8000 若是阶段 D 之前的 uvicorn，D1/D2 不会出现在 OpenAPI，需重启后再跑冒烟
   - AI remote 成功路径、企微真实 gettoken/日历 HTTP 仍主要靠 `scripts/verify_ai_remote` / `verify_wecom`，pytest 只打了不可达/打桩分支
 
+## 阶段 G：可观测性
+
+- 完成时间：2026-09-22
+- commit：`2cac531`
+- 内容：
+  - G1 结构化日志：`app/core/logging.py`，格式对齐 `alembic.ini`（`LEVEL [logger] [trace_id=...] message`）；`TraceIdMiddleware` 绑 contextvars + access 行（method/path/status/duration_ms）；不改 JSON 响应体
+  - G2 `/metrics`：`prometheus-fastapi-instrumentator`；兼容 FastAPI 0.138 `_IncludedRouter`（`app/core/metrics.py` 安全兜底）
+  - G3 OpenTelemetry：默认 `OTEL_ENABLED=false`；开启后 FastAPI + SQLAlchemy + Redis 自动埋点，无 Collector 用 ConsoleExporter、失败不阻塞
+- 测试：
+  - `pytest` 108 passed，核心覆盖率 72.46%（≥70%）
+  - `python -m scripts.smoke_test` 通过（含 `/metrics`）
+- 遗留问题 / 待确认项：
+  - OTel 默认关，本机无 Collector；生产需配 `OTEL_EXPORTER_OTLP_ENDPOINT` 再开
+  - instrumentator 对 include_router 的模板路径在新 FastAPI 下可能落到 `handler="none"`（用 raw path 分组），指标仍可用
+
 
