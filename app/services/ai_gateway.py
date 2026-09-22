@@ -6,7 +6,7 @@ import httpx
 
 from app.core.config import settings
 from app.core.errors import BizError, ErrorCode
-from app.services.ai_mock import stream_reply_mock, infer_tags_mock
+from app.services.ai_mock import stream_reply_mock, infer_tags_mock, parse_time_mock
 
 
 # ============ 对外统一入口 ============
@@ -138,3 +138,26 @@ async def _remote_infer_tags(
         raise BizError(ErrorCode.AI_TIMEOUT, "AI 推理超时") from exc
     except httpx.HTTPError as exc:
         raise BizError(ErrorCode.AI_BUSY, f"AI 网关异常: {exc}") from exc
+
+
+async def parse_time(text: str) -> list[dict]:
+    if settings.AI_MODE == "mock":
+        return await parse_time_mock(text)
+    # 远程占位
+    return await _remote_parse_time(text)
+
+
+async def _remote_parse_time(text: str) -> list[dict]:
+    url = f"{settings.AI_REMOTE_BASE_URL.rstrip('/')}/v1/schedules/parse"
+    timeout = httpx.Timeout(settings.AI_TIMEOUT_SECONDS)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(url, json={"text": text})
+            if resp.status_code >= 400:
+                raise BizError(ErrorCode.AI_BUSY, f"AI 网关返回 {resp.status_code}")
+            return resp.json().get("candidates") or []
+    except asyncio.TimeoutError as exc:
+        raise BizError(ErrorCode.AI_TIMEOUT, "时间解析超时") from exc
+    except httpx.HTTPError as exc:
+        raise BizError(ErrorCode.AI_BUSY, f"AI 网关异常: {exc}") from exc
+

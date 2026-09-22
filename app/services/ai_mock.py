@@ -1,6 +1,6 @@
 import asyncio
 from typing import AsyncGenerator
-
+from datetime import datetime, timedelta, timezone
 
 MOCK_CANDIDATES = {
     ("presale", "primary"): [
@@ -140,5 +140,86 @@ async def infer_tags_mock(
             "evidenceRefs": ["profile:study.weak_subjects"],
             "sopSummary": None,
         })
+
+    return results
+
+
+
+_CN_NUM = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "日": 7, "天": 7}
+
+
+def _next_weekday(base: datetime, weekday: int) -> datetime:
+    """下周 weekday（周一=1 ... 周日=7）。"""
+    days_ahead = (7 - base.weekday()) + (weekday - 1)
+    if days_ahead <= 0:
+        days_ahead += 7
+    return base + timedelta(days=days_ahead)
+
+
+async def parse_time_mock(text: str) -> list[dict]:
+    """
+    Mock 时间解析：覆盖几种常见说法：
+    - 今天 / 明天 / 后天
+    - 下周X / 本周X
+    - X天以后 / X小时后
+    - 具体日期 2026-09-25
+    返回：[{rawTime, parsedAt, task, priority, confidence, sourceRefs}]
+    """
+    now = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=8)))
+    results: list[dict] = []
+
+    def make(raw: str, parsed: datetime, task: str, priority: str, conf: float):
+        results.append({
+            "rawTime": raw,
+            "parsedAt": parsed.isoformat(),
+            "task": task,
+            "priority": priority,
+            "confidence": conf,
+            "sourceRefs": [],
+        })
+
+    if "今天" in text:
+        make("今天", now.replace(hour=20, minute=0, second=0, microsecond=0),
+             "今日跟进", "P1", 0.9)
+    if "明天" in text:
+        make("明天", (now + timedelta(days=1)).replace(hour=20, minute=0, second=0, microsecond=0),
+             "明日跟进", "P1", 0.9)
+    if "后天" in text:
+        make("后天", (now + timedelta(days=2)).replace(hour=20, minute=0, second=0, microsecond=0),
+             "后天跟进", "P1", 0.85)
+
+    # 下周X / 本周X
+    for kw, base in (("下周", _next_weekday(now, 1)), ("本周", now)):
+        if kw in text:
+            for cn, wd in _CN_NUM.items():
+                if f"{kw}{cn}" in text:
+                    target = _next_weekday(now, wd) if kw == "下周" else (
+                        base + timedelta(days=wd - 1 - base.weekday())
+                    )
+                    target = target.replace(hour=20, minute=0, second=0, microsecond=0)
+                    make(f"{kw}{cn}", target, f"{kw}{cn}跟进", "P1", 0.8)
+                    break
+
+    # X天以后 / X小时后
+    import re
+    m = re.search(r"(\d+)\s*天(?:以)?后", text)
+    if m:
+        n = int(m.group(1))
+        make(f"{n}天后", (now + timedelta(days=n)).replace(hour=20, minute=0, second=0, microsecond=0),
+             f"{n}天后跟进", "P2", 0.75)
+    m = re.search(r"(\d+)\s*(?:个)?小时(?:以)?后", text)
+    if m:
+        n = int(m.group(1))
+        make(f"{n}小时后", now + timedelta(hours=n), f"{n}小时后跟进", "P1", 0.7)
+
+    # 具体日期
+    m = re.search(r"(\d{4})-(\d{1,2})-(\d{1,2})", text)
+    if m:
+        y, mo, d = map(int, m.groups())
+        try:
+            target = datetime(y, mo, d, 20, 0, tzinfo=now.tzinfo)
+            make(m.group(0), target, "指定日期跟进", "P2", 0.85)
+        except ValueError:
+            pass
 
     return results
