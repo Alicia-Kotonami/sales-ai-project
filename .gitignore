@@ -38,6 +38,10 @@ Thumbs.db
 # 一期文档目录
 一期/
 
+# 企微侧边栏前端
+sidebar/node_modules/
+sidebar/dist/
+
 
 
 

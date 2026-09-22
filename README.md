@@ -46,3 +46,15 @@ docker compose -f docker-compose.prod.yml --env-file .env.production up -d --bui
 应用容器通过环境变量连接：`POSTGRES_HOST=postgres`、`REDIS_HOST=redis`（compose 服务名）。不要写成 `127.0.0.1`。
 
 健康检查：`GET /health`、`GET /health/db`、`GET /health/redis`。
+
+## 企微侧边栏 H5
+
+独立工程 `sidebar/`（Vue 3 + Vite + TypeScript）。先起后端 `8000`，再：
+
+```bash
+cd sidebar
+npm install
+npm run dev
+```
+
+打开 `http://127.0.0.1:5173/?customerId=3&conversationId=2`，开发登录 `wx_advisor_002`。顾问只能访问客户 3 / 会话 2。发送只发生在企微原生窗口，侧边栏禁止代发。

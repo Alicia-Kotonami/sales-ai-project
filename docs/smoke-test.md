@@ -138,4 +138,33 @@ curl -s -X POST -H "X-Debug-User-Id: 2" \
   http://127.0.0.1:8000/api/v1/schedules/tasks/TASK_ID/sync-wechat
 ```
 
+## 阶段 E 企微侧边栏
+
+独立工程 `sidebar/`（Vue 3 + Vite + TS）。Vite 把 `/api` 代理到 `127.0.0.1:8000`，不改后端。顾问只用客户 3 / 会话 2。
+
+```bash
+cd sidebar
+npm install
+npm run build
+npm run dev
+```
+
+浏览器：`http://127.0.0.1:5173/?customerId=3&conversationId=2`
+
+- 开发登录 `wechat_userid=wx_advisor_002`；URL 带 `code` 时走 `POST /api/v1/auth/wecom-oauth`
+- 画像确认/编辑/驳回需要 `&draftId=`（一期无草稿列表接口）
+- 回复「采纳并复制」只写 R2 + 剪贴板，禁止代发
+- 标签只勾选目录项；AI 推荐为提示（T1 未回 recommendationId）
+- SSE 断线指数退避（1s/2s/4s…上限 30s），重连带 `Last-Event-ID`
+
+代理冒烟（PowerShell 不要手写 JSON curl）：
+
+```bash
+# 侧边栏页
+curl -s -o NUL -w "%{http_code}" "http://127.0.0.1:5173/?customerId=3&conversationId=2"
+
+# 经 Vite 代理登录（顾问）
+# 用 httpx：POST http://127.0.0.1:5173/api/v1/auth/login  body {"wechat_userid":"wx_advisor_002"}
+```
+
 
