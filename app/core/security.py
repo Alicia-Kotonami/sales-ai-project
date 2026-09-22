@@ -15,7 +15,8 @@ def create_access_token(
     expires_minutes: int | None = None,
 ) -> str:
     """签发 JWT。"""
-    expire = datetime.now(timezone.utc) + timedelta(
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(
         minutes=expires_minutes or settings.JWT_EXPIRE_MINUTES
     )
     payload: dict[str, Any] = {
@@ -23,6 +24,7 @@ def create_access_token(
         "role_code": role_code,
         "region_id": region_id,
         "data_scope": data_scope,
+        "iat": now,
         "exp": expire,
     }
     return jwt.encode(

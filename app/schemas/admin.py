@@ -47,3 +47,65 @@ class TransferOwnerResult(BaseModel):
     customerId: int
     prevOwnerUserId: int | None = None
     ownerUserId: int
+
+
+class AdminUserItem(BaseModel):
+    userId: int
+    wechatUserid: str
+    name: str | None = None
+    roleCode: str | None = None
+    regionId: int | None = None
+    dataScope: int
+    status: int
+
+
+class AdminUserListResponse(BaseModel):
+    list: list[AdminUserItem]
+    total: int
+    page: int
+    pageSize: int
+
+
+class CreateUserRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    wechatUserid: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=64)
+    roleCode: str
+    regionId: int | None = Field(default=None, gt=0)
+    dataScope: int = Field(ge=1, le=3)
+
+
+class UpdateUserRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    name: str | None = Field(default=None, min_length=1, max_length=64)
+    status: int | None = None
+    regionId: int | None = Field(default=None, gt=0)
+
+
+class UpdatePermissionsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    roleCode: str
+    dataScope: int = Field(ge=1, le=3)
+
+
+class AdminOrderItem(BaseModel):
+    id: int
+    orderNo: str | None = None
+    productName: str | None = None
+    amount: float | None = None
+    status: int | None = None
+    expireAt: str | None = None
+    paidAt: str | None = None
+    customerId: int | None = None
+    customerNameMasked: str | None = None
+
+
+class AdminOrderListResponse(BaseModel):
+    list: list[AdminOrderItem]
+    total: int
+    page: int
+    pageSize: int
+

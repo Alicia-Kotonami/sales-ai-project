@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 from fastapi import Depends, Header, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,7 +8,8 @@ from app.core.config import settings
 from app.core.errors import BizError, ErrorCode
 from app.core.security import decode_access_token
 from app.db.session import get_db
-from app.models import Customer, SysUser
+from app.models import Customer, SysRole, SysUser
+from app.services.token_blacklist import is_user_token_revoked
 
 async def get_current_user(
     request: Request,
@@ -21,6 +24,7 @@ async def get_current_user(
     """
 
     user_id: int | None = None
+    token_iat = None
 
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization[7:].strip()
@@ -35,6 +39,9 @@ async def get_current_user(
             user_id = int(sub)
         except (TypeError, ValueError):
             raise BizError(ErrorCode.UNAUTHENTICATED, "token sub 非整数")
+        token_iat = payload.get("iat")
+        if await is_user_token_revoked(user_id, token_iat):
+            raise BizError(ErrorCode.UNAUTHENTICATED, "token 已失效，请重新登录")
 
     elif settings.APP_DEBUG and x_debug_user_id is not None:
         user_id = x_debug_user_id
@@ -50,6 +57,41 @@ async def get_current_user(
     if user is None:
         raise BizError(ErrorCode.UNAUTHENTICATED, f"用户 {user_id} 不存在")
     return user
+
+
+async def load_role_code(db: AsyncSession, user: SysUser) -> str | None:
+    if user.role_id is None:
+        return None
+    role = (
+        await db.execute(select(SysRole).where(SysRole.id == user.role_id))
+    ).scalar_one_or_none()
+    return role.code if role else None
+
+
+async def require_admin(
+    db: AsyncSession = Depends(get_db),
+    user: SysUser = Depends(get_current_user),
+) -> SysUser:
+    code = await load_role_code(db, user)
+    if code != "admin":
+        raise BizError(ErrorCode.FORBIDDEN, "无权限")
+    return user
+
+
+@dataclass
+class AdminActor:
+    user: SysUser
+    role_code: str
+
+
+async def require_supervisor_or_admin(
+    db: AsyncSession = Depends(get_db),
+    user: SysUser = Depends(get_current_user),
+) -> AdminActor:
+    code = await load_role_code(db, user)
+    if code not in ("supervisor", "admin"):
+        raise BizError(ErrorCode.FORBIDDEN, "无权限访问管理后台")
+    return AdminActor(user=user, role_code=code)
 
 
 

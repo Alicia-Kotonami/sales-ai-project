@@ -248,3 +248,256 @@ async def get_adoption_rate(
         },
         "metricDefinition": "使用率 = (原样采纳 + 采纳后编辑) / 侧边栏实际曝光次数",
     }
+
+
+def _month_range(from_date: date | None, to_date: date | None) -> tuple[date, date]:
+    today = date.today()
+    if to_date is None:
+        to_date = today
+    if from_date is None:
+        from_date = date(to_date.year, to_date.month, 1)
+    return from_date, to_date
+
+
+def _bounds(from_date: date, to_date: date) -> tuple[datetime, datetime]:
+    start = datetime(from_date.year, from_date.month, from_date.day, tzinfo=CN_TZ)
+    end = datetime(to_date.year, to_date.month, to_date.day, tzinfo=CN_TZ) + timedelta(days=1)
+    return start, end
+
+
+async def get_funnel(
+    db: AsyncSession,
+    *,
+    from_date: date,
+    to_date: date,
+    region_id: int | None,
+) -> dict:
+    from app.models import Customer, Conversation, Order, ScheduleTask
+
+    start, end = _bounds(from_date, to_date)
+
+    lead_stmt = select(func.count()).select_from(Customer).where(
+        Customer.is_deleted.is_(False),
+        Customer.created_at >= start,
+        Customer.created_at < end,
+    )
+    if region_id is not None:
+        lead_stmt = lead_stmt.where(Customer.region_id == region_id)
+    leads = int((await db.execute(lead_stmt)).scalar() or 0)
+
+    first_conv = (
+        select(
+            Conversation.customer_id.label("cid"),
+            func.min(func.coalesce(Conversation.started_at, Conversation.created_at)).label("first_at"),
+        )
+        .where(Conversation.is_deleted.is_(False), Conversation.customer_id.is_not(None))
+        .group_by(Conversation.customer_id)
+        .subquery()
+    )
+    consult_stmt = (
+        select(func.count())
+        .select_from(first_conv)
+        .join(Customer, Customer.id == first_conv.c.cid)
+        .where(
+            Customer.is_deleted.is_(False),
+            first_conv.c.first_at >= start,
+            first_conv.c.first_at < end,
+        )
+    )
+    if region_id is not None:
+        consult_stmt = consult_stmt.where(Customer.region_id == region_id)
+    consults = int((await db.execute(consult_stmt)).scalar() or 0)
+
+    trial_stmt = (
+        select(func.count(func.distinct(ScheduleTask.customer_id)))
+        .join(Customer, Customer.id == ScheduleTask.customer_id)
+        .where(
+            ScheduleTask.type == 1,
+            ScheduleTask.status == 2,
+            ScheduleTask.is_deleted.is_(False),
+            Customer.is_deleted.is_(False),
+            ScheduleTask.updated_at >= start,
+            ScheduleTask.updated_at < end,
+        )
+    )
+    if region_id is not None:
+        trial_stmt = trial_stmt.where(Customer.region_id == region_id)
+    trials = int((await db.execute(trial_stmt)).scalar() or 0)
+
+    deal_stmt = (
+        select(func.count(func.distinct(Order.customer_id)))
+        .join(Customer, Customer.id == Order.customer_id)
+        .where(
+            Order.status.in_((1, 3)),
+            Order.paid_at.is_not(None),
+            Order.paid_at >= start,
+            Order.paid_at < end,
+            Order.is_deleted.is_(False),
+            Customer.is_deleted.is_(False),
+        )
+    )
+    if region_id is not None:
+        deal_stmt = deal_stmt.where(Customer.region_id == region_id)
+    deals = int((await db.execute(deal_stmt)).scalar() or 0)
+
+    names = ["线索", "首咨", "试听", "成交"]
+    cnts = [leads, consults, trials, deals]
+    steps = []
+    for i, (name, cnt) in enumerate(zip(names, cnts)):
+        prev = cnts[i - 1] if i else None
+        if i == 0:
+            rate = 100.0
+        elif not prev:
+            rate = 0.0
+        else:
+            rate = round(cnt * 100 / prev, 2)
+        steps.append({"name": name, "cnt": cnt, "rate": rate})
+
+    return {
+        "dateRange": f"{from_date.isoformat()}~{to_date.isoformat()}",
+        "steps": steps,
+    }
+
+
+async def get_renewal_rate(
+    db: AsyncSession,
+    *,
+    from_date: date,
+    to_date: date,
+    region_id: int | None,
+) -> dict:
+    from app.models import Customer, Order
+
+    start, end = _bounds(from_date, to_date)
+    expire_stmt = (
+        select(Order.customer_id, Order.id, Order.expire_at)
+        .join(Customer, Customer.id == Order.customer_id)
+        .where(
+            Order.status.in_((1, 3)),
+            Order.expire_at >= start,
+            Order.expire_at < end,
+            Order.is_deleted.is_(False),
+            Customer.is_deleted.is_(False),
+            Order.customer_id.is_not(None),
+        )
+    )
+    if region_id is not None:
+        expire_stmt = expire_stmt.where(Customer.region_id == region_id)
+    expired = (await db.execute(expire_stmt)).all()
+    expire_customers = {r.customer_id for r in expired}
+
+    renewed: set[int] = set()
+    if expired:
+        for row in expired:
+            window_end = row.expire_at + timedelta(days=30)
+            found = (
+                await db.execute(
+                    select(Order.id).where(
+                        Order.customer_id == row.customer_id,
+                        Order.id != row.id,
+                        Order.status.in_((1, 3)),
+                        Order.paid_at.is_not(None),
+                        Order.paid_at > row.expire_at,
+                        Order.paid_at <= window_end,
+                        Order.is_deleted.is_(False),
+                    ).limit(1)
+                )
+            ).scalar_one_or_none()
+            if found is not None:
+                renewed.add(row.customer_id)
+
+    expire_cnt = len(expire_customers)
+    renewed_cnt = len(renewed)
+    rate = round(renewed_cnt * 100 / expire_cnt, 2) if expire_cnt else 0.0
+    return {
+        "expireCnt": expire_cnt,
+        "renewedCnt": renewed_cnt,
+        "renewalRate": rate,
+    }
+
+
+async def get_advisor_efficiency(
+    db: AsyncSession,
+    *,
+    from_date: date,
+    to_date: date,
+    region_id: int | None,
+) -> dict:
+    from app.models import Conversation, Customer, Order, SysRole, SysUser
+
+    start, end = _bounds(from_date, to_date)
+
+    advisor_stmt = (
+        select(SysUser)
+        .join(SysRole, SysRole.id == SysUser.role_id)
+        .where(
+            SysUser.is_deleted.is_(False),
+            SysUser.status == 1,
+            SysRole.code == "advisor",
+        )
+    )
+    if region_id is not None:
+        advisor_stmt = advisor_stmt.where(SysUser.region_id == region_id)
+    advisors = (await db.execute(advisor_stmt)).scalars().all()
+
+    conv_stmt = (
+        select(Conversation.advisor_user_id, func.count(Conversation.id))
+        .where(
+            Conversation.is_deleted.is_(False),
+            Conversation.advisor_user_id.is_not(None),
+            func.coalesce(Conversation.started_at, Conversation.created_at) >= start,
+            func.coalesce(Conversation.started_at, Conversation.created_at) < end,
+        )
+        .group_by(Conversation.advisor_user_id)
+    )
+    conv_map = {r[0]: int(r[1] or 0) for r in (await db.execute(conv_stmt)).all()}
+
+    cust_stmt = (
+        select(Customer.owner_user_id, func.count(Customer.id))
+        .where(Customer.is_deleted.is_(False), Customer.owner_user_id.is_not(None))
+        .group_by(Customer.owner_user_id)
+    )
+    cust_map = {r[0]: int(r[1] or 0) for r in (await db.execute(cust_stmt)).all()}
+
+    deal_stmt = (
+        select(
+            Customer.owner_user_id,
+            func.count(Order.id),
+            func.coalesce(func.sum(Order.amount), 0),
+        )
+        .join(Customer, Customer.id == Order.customer_id)
+        .where(
+            Order.status.in_((1, 3)),
+            Order.paid_at.is_not(None),
+            Order.paid_at >= start,
+            Order.paid_at < end,
+            Order.is_deleted.is_(False),
+            Customer.is_deleted.is_(False),
+        )
+        .group_by(Customer.owner_user_id)
+    )
+    deal_map: dict[int, tuple[int, float]] = {}
+    for owner_id, cnt, amount in (await db.execute(deal_stmt)).all():
+        deal_map[owner_id] = (int(cnt or 0), float(amount or 0))
+
+    def _mask(raw: str | None) -> str:
+        return (raw[0] + "*") if raw else ""
+
+    by_advisor = []
+    for a in advisors:
+        deal_cnt, amount = deal_map.get(a.id, (0, 0.0))
+        by_advisor.append(
+            {
+                "advisorId": a.id,
+                "nameMasked": _mask(a.name),
+                "convCnt": conv_map.get(a.id, 0),
+                "dealCnt": deal_cnt,
+                "amount": round(amount, 2),
+                "customers": cust_map.get(a.id, 0),
+            }
+        )
+
+    return {
+        "dateRange": f"{from_date.isoformat()}~{to_date.isoformat()}",
+        "byAdvisor": by_advisor,
+    }

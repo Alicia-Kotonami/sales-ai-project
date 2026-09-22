@@ -5,6 +5,7 @@ from app.core.redis_client import get_redis
 
 PROFILE_CACHE_KEY = "profile:cache:{customer_id}"
 PROFILE_CACHE_TTL = 3600  # 1h
+TAG_CATALOG_CACHE_KEY = "tag:catalog"
 
 
 def _profile_key(customer_id: int) -> str:
@@ -35,3 +36,11 @@ async def set_profile_cache(
 
 async def invalidate_profile_cache(customer_id: int) -> None:
     await get_redis().delete(_profile_key(customer_id))
+
+
+async def invalidate_tag_catalog_cache() -> None:
+    """T4/T5/T6：变更后清目录缓存，全员下拉立即统一。"""
+    redis = get_redis()
+    await redis.delete(TAG_CATALOG_CACHE_KEY)
+    async for key in redis.scan_iter(match="tag:catalog*"):
+        await redis.delete(key)

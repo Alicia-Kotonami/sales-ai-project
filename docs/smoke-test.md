@@ -1,0 +1,74 @@
+# 接口冒烟测试
+
+基础：`http://127.0.0.1:8000`，开发环境可用 `X-Debug-User-Id`（`APP_DEBUG=true`）。
+
+- 管理员用户：`X-Debug-User-Id: 1`（wx_advisor_001 / admin）
+- 顾问用户：`X-Debug-User-Id: 2`（wx_advisor_002 / advisor）
+
+```bash
+# 健康检查
+curl -s http://127.0.0.1:8000/health
+curl -s http://127.0.0.1:8000/health/db
+curl -s http://127.0.0.1:8000/health/redis
+```
+
+## 阶段 B 管理后台
+
+```bash
+# A1a 员工列表
+curl -s -H "X-Debug-User-Id: 1" "http://127.0.0.1:8000/api/v1/admin/users?page=1&page_size=20"
+
+# A1a 顾问调用应 1003
+curl -s -H "X-Debug-User-Id: 2" "http://127.0.0.1:8000/api/v1/admin/users"
+
+# A1b 新建员工
+curl -s -X POST -H "X-Debug-User-Id: 1" -H "Content-Type: application/json" \
+  http://127.0.0.1:8000/api/v1/admin/users \
+  -d "{\"wechatUserid\":\"wx_advisor_smoke\",\"name\":\"测试顾问\",\"roleCode\":\"advisor\",\"regionId\":1,\"dataScope\":1}"
+
+# A1c 更新员工（把上一步返回的 userId 换上）
+curl -s -X PUT -H "X-Debug-User-Id: 1" -H "Content-Type: application/json" \
+  http://127.0.0.1:8000/api/v1/admin/users/2 \
+  -d "{\"name\":\"刘大伟\"}"
+
+# A2 角色与数据范围
+curl -s -X PUT -H "X-Debug-User-Id: 1" -H "Content-Type: application/json" \
+  http://127.0.0.1:8000/api/v1/admin/users/2/permissions \
+  -d "{\"roleCode\":\"advisor\",\"dataScope\":1}"
+
+# A5 订单列表 / 详情
+curl -s -H "X-Debug-User-Id: 1" "http://127.0.0.1:8000/api/v1/admin/orders?page=1&page_size=20"
+curl -s -H "X-Debug-User-Id: 1" "http://127.0.0.1:8000/api/v1/admin/orders/1"
+
+# A6 转化漏斗
+curl -s -H "X-Debug-User-Id: 1" "http://127.0.0.1:8000/api/v1/admin/dashboard/funnel"
+
+# A7 续费率
+curl -s -H "X-Debug-User-Id: 1" "http://127.0.0.1:8000/api/v1/admin/dashboard/renewal-rate"
+
+# A8 顾问人效
+curl -s -H "X-Debug-User-Id: 1" "http://127.0.0.1:8000/api/v1/admin/dashboard/advisor-efficiency"
+
+# T4 新建标签
+curl -s -X POST -H "X-Debug-User-Id: 1" -H "Content-Type: application/json" \
+  http://127.0.0.1:8000/api/v1/admin/tags \
+  -d "{\"code\":\"intent_smoke\",\"name\":\"冒烟意向\",\"category\":\"intent\",\"measurableRule\":\"7日内主动询价\",\"maxPerCustomer\":1,\"sortOrder\":99}"
+
+# T5 修改标签（把 tagId 换上）
+curl -s -X PUT -H "X-Debug-User-Id: 1" -H "Content-Type: application/json" \
+  http://127.0.0.1:8000/api/v1/admin/tags/1 \
+  -d "{\"sortOrder\":1}"
+
+# T6 SOP
+curl -s -X PUT -H "X-Debug-User-Id: 1" -H "Content-Type: application/json" \
+  http://127.0.0.1:8000/api/v1/admin/tags/1/sop \
+  -d "{\"name\":\"高意向SOP\",\"steps\":[{\"seq\":1,\"action\":\"24小时内邀约试听\",\"offset_days\":1,\"template\":\"您好\"}]}"
+
+# T7 统计
+curl -s -H "X-Debug-User-Id: 1" "http://127.0.0.1:8000/api/v1/admin/tags/1/stats"
+
+# T4 顾问调用应 1003
+curl -s -X POST -H "X-Debug-User-Id: 2" -H "Content-Type: application/json" \
+  http://127.0.0.1:8000/api/v1/admin/tags \
+  -d "{\"code\":\"x\",\"name\":\"x\",\"category\":\"intent\",\"measurableRule\":\"x\"}"
+```
