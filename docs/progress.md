@@ -28,3 +28,21 @@
   - 库 `salesai-ally` 补了 `supervisor` 角色（原先只有 advisor/admin）
 - 测试：RAG_study 启动 uvicorn，接口冒烟全部通过（含顾问 1003、A2 token 失效、离职前须 A10）
 - 遗留问题：订单表示例数据为空，A5/A7 成交与续费口径只能用空结果验证
+
+## 阶段 C：真 AI 对接
+
+- 完成时间：2026-09-22
+- commit：`071983b`
+- 内容：
+  - `ai_gateway.py` 补全 remote：`/v1/reply/stream`、`/v1/tags/recommend`、`/v1/schedules/parse`、`/v1/asr`
+  - 超时映射修正：httpx.TimeoutException → 5002（原先会误成 5001）；不可达/4xx/5xx → 5001
+  - R1 `type=audio`：mock 仍占位句；remote 走 ASR，失败/超时 5003
+  - 默认仍 `AI_MODE=mock`；打桩 `scripts/mock_ai_remote.py`，校验 `python -m scripts.verify_ai_remote`
+- 测试：
+  - `python -m scripts.verify_ai_remote` 通过（成功路径 + 5001/5002/5003 + mock 占位未改）
+  - 本机 uvicorn mock 冒烟：R1 文本/语音、T1、S1 通过
+- 遗留问题：
+  - API-LLD 未写 ASR 的 URL，按 AI-2/3/4 同类约定为 `POST /v1/asr`；若实际网关不同需改常量
+  - audioUrl 企业对象存储前缀校验未做（配置项文档未给）
+  - 同类场景缓存降级未做，熔断只返回 5001/5002（按 task C3）
+
