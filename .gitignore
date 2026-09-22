@@ -8,6 +8,7 @@ __pycache__/
 # env/
 .env
 .env.local
+.env.production
 
 # Conda
 # 👉 只有用 --prefix 在项目本地创建conda环境才启用下面一行，全局conda环境不需要
@@ -33,6 +34,9 @@ Thumbs.db
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+
+# 一期文档目录
+一期/
 
 
 

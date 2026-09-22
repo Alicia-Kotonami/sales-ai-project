@@ -1,6 +1,10 @@
 """
-开发环境：一键建表脚本。
-生产环境后续改用 Alembic 迁移。
+开发环境：一键建表脚本（Base.metadata.create_all）。
+
+生产环境禁止使用本脚本，只用：
+    alembic upgrade head
+容器启动见 scripts/entrypoint.sh。
+
 运行方式（在项目根目录）：
     python -m scripts.init_db
 """
