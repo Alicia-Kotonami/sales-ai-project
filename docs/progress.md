@@ -3,7 +3,7 @@
 ## 阶段 A：生产化准备
 
 - 完成时间：2026-09-22
-- commit：待回填
+- commit：`2812fff`
 - 内容：
   - Dockerfile 基于 python:3.11-slim，安装 `requirements.txt`
   - `docker-compose.prod.yml`：app + postgres + redis，按环境变量连接
