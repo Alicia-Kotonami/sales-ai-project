@@ -85,4 +85,22 @@
   - 本机当时 8000 进程 OpenAPI 无 `/auth/wecom-oauth`（旧 uvicorn），OAuth 需重启后端后再从侧边栏验 D2
   - 无浏览器自动化工具，未做真实点击走查；Vite 页已 200
 
+## 阶段 F：测试与质量
+
+- 完成时间：2026-09-22
+- commit：`a84ff7b`
+- 内容：
+  - pytest + httpx.AsyncClient 接口测试，107 例（≥30），覆盖健康检查/鉴权、P1/P3/P4/P5、R1/R2、T0–T3b/T1/T2、S1–S6、A1–A10、T4–T7、企微回调
+  - `scripts/smoke_test.sh` → `python -m scripts.smoke_test`，跑 `docs/smoke-test.md` 条目（JSON 用 httpx）
+  - 补历史接口冒烟（登录、P1、T0/T3、S4、A3/A4/A9、S6）
+  - 核心模块 `app/api` + `app/services` + `app/core` 覆盖率 72.95%（门槛 70%，`.coveragerc` 开 thread/greenlet）
+  - 开发依赖 `requirements-dev.txt`，不塞进运行时 `requirements.txt`
+- 测试：
+  - `pytest` 107 passed，覆盖率达标
+  - `python -m scripts.smoke_test` 通过（本机 8000 旧进程无企微路由，D1/D2 已 SKIP 并提示重启）
+- 遗留问题 / 待确认项：
+  - A3 不带过滤拉全量时，owner 本人且 `phone_encrypted` 为空会撞 `phoneMasked: str`（未改已完成接口；冒烟用 `ownerUserId=2`）
+  - 本机 8000 若是阶段 D 之前的 uvicorn，D1/D2 不会出现在 OpenAPI，需重启后再跑冒烟
+  - AI remote 成功路径、企微真实 gettoken/日历 HTTP 仍主要靠 `scripts/verify_ai_remote` / `verify_wecom`，pytest 只打了不可达/打桩分支
+
 
