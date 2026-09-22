@@ -72,3 +72,39 @@ curl -s -X POST -H "X-Debug-User-Id: 2" -H "Content-Type: application/json" \
   http://127.0.0.1:8000/api/v1/admin/tags \
   -d "{\"code\":\"x\",\"name\":\"x\",\"category\":\"intent\",\"measurableRule\":\"x\"}"
 ```
+
+## 阶段 C 真 AI 网关
+
+默认 `AI_MODE=mock`，下列条目验证 mock 行为未改。remote 契约与 5001/5002/5003 用 `python -m scripts.verify_ai_remote`（不改进程默认 mock）。
+
+```bash
+# R1 文本（mock SSE，应有 suggest_chunk / suggest_done）
+# 顾问 2 的客户 3 / 会话 2（客户 1 归属管理员，顾问调会 1003）
+curl -sN -H "X-Debug-User-Id: 2" -H "Content-Type: application/json" \
+  http://127.0.0.1:8000/api/v1/reply/suggestions/stream \
+  -d "{\"conversationId\":2,\"customerId\":3,\"currentMessage\":{\"type\":\"text\",\"text\":\"数学怎么收费\"}}"
+
+# R1 语音 mock：不走远端 ASR，asr_result 为占位句（无 text 时）
+curl -sN -H "X-Debug-User-Id: 2" -H "Content-Type: application/json" \
+  http://127.0.0.1:8000/api/v1/reply/suggestions/stream \
+  -d "{\"conversationId\":2,\"customerId\":3,\"currentMessage\":{\"type\":\"audio\",\"audioUrl\":\"oss://msg/demo.amr\"}}"
+
+# T1 标签推荐（mock，经网关）
+curl -sN -H "X-Debug-User-Id: 2" -H "Content-Type: application/json" \
+  http://127.0.0.1:8000/api/v1/tags/recommendations/stream \
+  -d "{\"customerId\":3,\"conversationId\":2}"
+
+# S1 时间解析（mock，经网关）
+curl -s -H "X-Debug-User-Id: 2" -H "Content-Type: application/json" \
+  http://127.0.0.1:8000/api/v1/schedules/parse \
+  -d "{\"text\":\"明天下午跟进试听\"}"
+```
+
+切 `AI_MODE=remote` 并先起打桩：
+
+```bash
+python -m uvicorn scripts.mock_ai_remote:app --host 127.0.0.1 --port 9000
+```
+
+远端路径：`POST /v1/reply/stream`、`/v1/tags/recommend`、`/v1/schedules/parse`、`/v1/asr`。ASR `audioUrl` 含 `fail` 时打桩返回失败，R1 应 SSE `suggest_error` `code=5003`。
+

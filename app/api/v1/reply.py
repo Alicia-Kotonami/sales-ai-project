@@ -20,7 +20,7 @@ from app.services.profile_injector import (
 )
 from app.services.audit_service import write_audit
 from app.services.event_bus import publish_event
-from app.services.ai_gateway import infer_reply_stream
+from app.services.ai_gateway import infer_reply_stream, is_remote_mode, transcribe_audio
 
 from datetime import datetime, timezone
 
@@ -49,6 +49,26 @@ async def _has_paid_order(db: AsyncSession, customer_id: int) -> bool:
 
 def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+async def _persist_asr(conversation_id: int, audio_url: str | None, text: str, status: int) -> None:
+    """ASR 成功后回写已落库语音消息。audioUrl 对不上则跳过。"""
+    if not audio_url:
+        return
+    values: dict = {"asr_status": status}
+    if status == 2:
+        values["content"] = text
+    async with AsyncSessionLocal() as s:
+        await s.execute(
+            update(Message)
+            .where(
+                Message.conversation_id == conversation_id,
+                Message.raw_url == audio_url,
+                Message.is_deleted.is_(False),
+            )
+            .values(**values)
+        )
+        await s.commit()
 
 
 @router.post("/suggestions/stream")
@@ -129,13 +149,19 @@ async def suggest_stream(
     async def event_generator() -> AsyncGenerator[str, None]:
         candidates_store: list[dict] = []
         try:
-            # 5.1 如果是语音：Mock 直接返回一句
+            # 5.1 语音：mock 仍用占位/原文；remote 走 AI-5，失败 5003
             if current.type == "audio":
-                asr_text = current.text or "（语音转写占位文本）"
+                asr_text = await transcribe_audio(
+                    audio_url=current.audioUrl,
+                    fallback_text=current.text,
+                )
                 yield _sse("asr_result", {"text": asr_text})
+                if is_remote_mode():
+                    await _persist_asr(body.conversationId, current.audioUrl, asr_text, 2)
 
             # 5.2 流式返回候选
-            full_text = {1: "", 2: ""}
+            full_text: dict[int, str] = {1: "", 2: ""}
+            model_version = "mock-v0"
             async for item in infer_reply_stream(
                     conversation_id=body.conversationId,
                     customer_id=body.customerId,
@@ -144,10 +170,19 @@ async def suggest_stream(
                     scenario_tags=scenario_tags,
             ):
                 evt = item["event"]
-                data = item["data"]
-                cid = data["candidateId"]
-                delta = data["delta"]
-                full_text[cid] += delta
+                data = item.get("data") or {}
+                if evt == "suggest_done":
+                    if data.get("modelVersion"):
+                        model_version = str(data["modelVersion"])[:32]
+                    continue
+                if evt == "suggest_error":
+                    yield _sse("suggest_error", data)
+                    return
+                if evt != "suggest_chunk":
+                    continue
+                cid = int(data["candidateId"])
+                delta = data.get("delta") or ""
+                full_text[cid] = full_text.get(cid, "") + delta
 
                 # 写内存 replay 缓存（简版）
                 await redis.rpush(replay_key, _sse(evt, data))
@@ -157,10 +192,25 @@ async def suggest_stream(
 
             # 5.3 落库 suggestion_event
             latency_ms = int((time.perf_counter() - start_ts) * 1000)
-            candidates_store = [
-                {"candidateId": 1, "text": full_text[1], "confidence": 0.88},
-                {"candidateId": 2, "text": full_text[2], "confidence": 0.82},
-            ]
+            if is_remote_mode():
+                candidates_store = [
+                    {
+                        "candidateId": cid,
+                        "text": text,
+                        "confidence": round(0.88 - 0.06 * i, 2),
+                    }
+                    for i, (cid, text) in enumerate(
+                        sorted(
+                            ((k, v) for k, v in full_text.items() if v),
+                            key=lambda x: x[0],
+                        )
+                    )
+                ]
+            else:
+                candidates_store = [
+                    {"candidateId": 1, "text": full_text.get(1, ""), "confidence": 0.88},
+                    {"candidateId": 2, "text": full_text.get(2, ""), "confidence": 0.82},
+                ]
             async with AsyncSessionLocal() as s:
                 evt = SuggestionEvent(
                     conversation_id=body.conversationId,
@@ -170,7 +220,7 @@ async def suggest_stream(
                     scenario_tags=scenario_tags,
                     profile_version=injected.version,
                     candidates_json=candidates_store,
-                    model_version="mock-v0",
+                    model_version=model_version,
                     latency_ms=latency_ms,
                     exposed_at=None,
                 )

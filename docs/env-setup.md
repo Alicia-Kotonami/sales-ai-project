@@ -44,6 +44,8 @@ cp .env.example .env
 
 `APP_DEBUG=false` 时 `X-Debug-User-Id` 无效，必须带 `Authorization: Bearer <JWT>`。
 
+AI 默认 `AI_MODE=mock`，不打真实模型。切 `remote` 时业务层经 `app/services/ai_gateway.py` 调用 `AI_REMOTE_BASE_URL` 上的 `/v1/reply/stream`、`/v1/tags/recommend`、`/v1/schedules/parse`、`/v1/asr`，超时 `AI_TIMEOUT_SECONDS`（默认 3 秒）。本地可用 `python -m uvicorn scripts.mock_ai_remote:app --host 127.0.0.1 --port 9000` 打桩。
+
 ## 5. Python 依赖
 
 ```bash
