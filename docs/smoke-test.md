@@ -209,4 +209,17 @@ curl -s -o NUL -w "%{http_code}" "http://127.0.0.1:5173/?customerId=3&conversati
 # 用 httpx：POST http://127.0.0.1:5173/api/v1/auth/login  body {"wechat_userid":"wx_advisor_002"}
 ```
 
+## 阶段 G 可观测
+
+结构化日志格式对齐 `alembic.ini`：`LEVEL [logger] [trace_id=...] key=value...`（stderr）。  
+`/metrics` 为 Prometheus text，**不是**统一 JSON 信封。OpenTelemetry 默认关（`OTEL_ENABLED=false`）。
+
+```bash
+# G2 Prometheus 指标（应含 http_requests / process_ 等）
+curl -s http://127.0.0.1:8000/metrics | head
+
+# 健康检查仍可用；任意业务请求后 stderr 应有 app.access 行带 trace_id
+curl -s http://127.0.0.1:8000/health
+```
+
 

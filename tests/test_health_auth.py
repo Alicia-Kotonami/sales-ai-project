@@ -29,6 +29,17 @@ async def test_health_redis(client: httpx.AsyncClient):
     assert biz_code(resp) == 0
 
 
+async def test_metrics(client: httpx.AsyncClient):
+    # 先打一枪健康检查，确保有 http 计数
+    await client.get("/health")
+    resp = await client.get("/metrics")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "http_requests" in text or "process_" in text
+    # Prometheus text，不是统一 JSON 信封
+    assert "trace_id" not in text or "# " in text[:200]
+
+
 async def test_demo_echo(client: httpx.AsyncClient):
     resp = await client.get("/demo/echo", params={"n": 7})
     assert biz_code(resp) == 0

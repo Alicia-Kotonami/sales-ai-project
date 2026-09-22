@@ -61,6 +61,18 @@ def main() -> int:
 
         run("health", health)
 
+        # ---- 阶段 G ----
+        def metrics():
+            resp = c.get("/metrics")
+            if resp.status_code != 200:
+                raise SmokeError(f"status={resp.status_code}")
+            text = resp.text
+            if "http_requests" not in text and "process_" not in text:
+                raise SmokeError("body missing prometheus metrics")
+            _print(True, "metrics")
+
+        run("metrics", metrics)
+
         # ---- 历史接口 ----
         def login():
             resp = c.post("/api/v1/auth/login", json={"wechat_userid": "wx_advisor_002"})

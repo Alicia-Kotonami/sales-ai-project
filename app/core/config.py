@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     WECOM_ENCODING_AES_KEY: str = ""
     WECOM_API_BASE_URL: str = "https://qyapi.weixin.qq.com"
 
+    # 可观测（阶段 G）
+    LOG_LEVEL: str = "INFO"
+    OTEL_ENABLED: bool = False
+    OTEL_SERVICE_NAME: str = "sales-ai"
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
+
     # 读取 .env
     model_config = SettingsConfigDict(
         env_file=".env",
