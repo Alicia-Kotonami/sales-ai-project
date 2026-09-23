@@ -3,6 +3,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     ForeignKey,
     Integer,
@@ -59,6 +60,19 @@ class SuggestionEvent(Base, PKMixin, TimestampMixin):
     final_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     acted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+    # 二期：legacy / rag / agent
+    mode: Mapped[str | None] = mapped_column(
+        String(16), server_default="legacy", nullable=True
+    )
+    agent_run_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    fallback: Mapped[bool | None] = mapped_column(
+        Boolean, server_default="false", nullable=True
+    )
+    citations_json: Mapped[list[Any] | None] = mapped_column(JSONB, nullable=True)
+    uncertainty_notes_json: Mapped[list[Any] | None] = mapped_column(
+        JSONB, nullable=True
     )
 
     def __repr__(self) -> str:

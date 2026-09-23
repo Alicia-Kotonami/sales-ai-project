@@ -1,3 +1,5 @@
+"""企微回调接口：验签 / 解密委托 ``wecom_client``，本层只做 HTTP 适配。"""
+
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import PlainTextResponse
 
@@ -33,7 +35,7 @@ async def wecom_callback_event(
     nonce: str | None = Query(default=None),
 ):
     """
-    D1 POST：验签 + 解密，打桩返回 ok。禁止代发。
+    D1 POST：验签 + 解密，打桩返回 ok。禁止代发消息。
     """
     body = await request.body()
     text = await wecom_client.handle_callback(

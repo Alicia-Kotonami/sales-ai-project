@@ -98,4 +98,46 @@ export type SuggestDone = {
   profileVersion: number;
   latencyMs: number;
   eventId: number;
+  mode?: "legacy" | "rag" | "agent" | string;
+  runId?: number | null;
+  fallback?: boolean;
+  status?: string | null;
+  citations?: Citation[];
+  uncertaintyNotes?: Array<string | UncertaintyNote>;
 };
+
+export type Citation = {
+  type?: string;
+  refId?: string;
+  label?: string;
+  updatedAt?: string | null;
+  excerpt?: string;
+  [key: string]: unknown;
+};
+
+export type UncertaintyNote = {
+  code?: string;
+  message?: string;
+  [key: string]: unknown;
+};
+
+export type AgentStepEvent = {
+  runId: number;
+  stepIndex: number;
+  phase?: string;
+  capability?: string;
+  title?: string;
+  status?: "running" | "ok" | "error" | string;
+  summary?: string;
+  sourceRefs?: string[];
+};
+
+export type AgentStartEvent = {
+  runId: number;
+  maxSteps?: number;
+};
+
+export type RagStatusEvent = {
+  status: string;
+};
+

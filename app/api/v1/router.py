@@ -3,6 +3,8 @@ from fastapi import APIRouter
 from app.api.v1 import (
     admin_customers,
     admin_dashboard,
+    admin_feature_flags,
+    admin_knowledge,
     admin_orders,
     admin_tags,
     admin_users,
@@ -28,5 +30,7 @@ api_router.include_router(admin_customers.router)
 api_router.include_router(admin_users.router)
 api_router.include_router(admin_orders.router)
 api_router.include_router(admin_tags.router)
+api_router.include_router(admin_feature_flags.router)
+api_router.include_router(admin_knowledge.router)
 
 __all__ = ["api_router"]

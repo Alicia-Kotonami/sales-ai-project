@@ -59,18 +59,27 @@ function apply(): void {
 </script>
 
 <template>
-  <header class="card">
-    <div class="row" style="justify-content: space-between">
+  <section class="card panel">
+    <div class="panel-head">
       <div>
-        <div><b>{{ summary }}</b></div>
-        <div class="muted">顾问 {{ user?.userId ?? "-" }} · {{ roleLabel }} · dataScope {{ user?.dataScope ?? "-" }}</div>
+        <h2>客户上下文</h2>
+        <p class="muted">切换客户 / 会话后点击应用</p>
       </div>
       <button class="btn" type="button" @click="emit('logout')">退出</button>
     </div>
-    <div class="banner" style="margin-top: 8px">
+
+    <div class="panel-summary">
+      <div class="panel-summary-title">{{ summary }}</div>
+      <div class="muted">
+        顾问 {{ user?.userId ?? "-" }} · {{ roleLabel }} · dataScope {{ user?.dataScope ?? "-" }}
+      </div>
+    </div>
+
+    <div class="banner">
       顾问演示请用客户 3 / 会话 2。客户 1 归属管理员，顾问调用会 1003。
     </div>
-    <div class="row" style="margin-top: 6px">
+
+    <div class="field-grid field-grid-3">
       <div class="field">
         <label>customerId</label>
         <input v-model="customerId" inputmode="numeric" />
@@ -84,8 +93,9 @@ function apply(): void {
         <input v-model="draftId" inputmode="numeric" placeholder="可选" />
       </div>
     </div>
-    <div class="row" style="margin-top: 8px">
+
+    <div class="panel-actions">
       <button class="btn primary" type="button" @click="apply">切换客户</button>
     </div>
-  </header>
+  </section>
 </template>

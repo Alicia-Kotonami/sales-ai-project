@@ -27,25 +27,36 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 本地只起 PostgreSQL + Redis。FastAPI 跑在宿主机，`.env` 里 `POSTGRES_HOST=127.0.0.1`、`REDIS_HOST=127.0.0.1`。
 
+### AI 独立模块（DeepSeek / `AI_MODE=remote`）
+
+业务进程**不**直连 DeepSeek，只走 `ai_gateway` → `AI_REMOTE_BASE_URL`（默认 `http://127.0.0.1:9000`）。
+
+```bash
+# 终端 A：AI Runtime
+cd ai_runtime && cp .env.example .env   # 填写 DEEPSEEK_API_KEY
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 9000
+# 或：powershell -File scripts/start-ai.ps1
+
+# 终端 B：业务（.env 设 AI_MODE=remote、AI_TIMEOUT_SECONDS=8）
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+`AI_MODE=mock` 时可不启 9000。详见 `ai_runtime/README.md`、`二期/二期-开发方案-侧边栏SSE与DeepSeek.md`。
+
 `APP_DEBUG=true` 时，未带 Authorization 可用 `X-Debug-User-Id` 兜底。生产必须 `APP_DEBUG=false`。
 
 本地建表也只用 Alembic。`python -m scripts.init_db`（`create_all`）仅应急，不要在生产使用。
 
 ## 生产部署
 
-生产库表**只用** Alembic，**禁止** `Base.metadata.create_all` / `scripts/init_db.py`。
-
-容器入口 `scripts/entrypoint.sh` 会在启动 uvicorn 前执行 `alembic upgrade head`。
+全部集中在 **`deploy/`**（compose + 环境变量模板 + 说明）。别人接手只看 `deploy/README.md`。
 
 ```bash
-cp .env.production.example .env.production
-# 修改 JWT_SECRET_KEY、POSTGRES_PASSWORD 等，APP_DEBUG 保持 false
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+cd deploy
+cp .env.example .env   # 改密钥与密码，APP_DEBUG 保持 false
+docker compose --env-file .env up -d --build
 ```
-
-应用容器通过环境变量连接：`POSTGRES_HOST=postgres`、`REDIS_HOST=redis`（compose 服务名）。不要写成 `127.0.0.1`。
-
-健康检查：`GET /health`、`GET /health/db`、`GET /health/redis`。
 
 ## 企微侧边栏 H5
 
@@ -57,7 +68,9 @@ npm install
 npm run dev
 ```
 
-打开 `http://127.0.0.1:5173/?customerId=3&conversationId=2`，开发登录 `wx_advisor_002`。顾问只能访问客户 3 / 会话 2。发送只发生在企微原生窗口，侧边栏禁止代发。
+打开 `http://127.0.0.1:5173/?customerId=3&conversationId=2`，开发登录 `wx_advisor_002`。顾问只能访问客户 3 / 会话 2。
+
+**演示模式（企微占位）**：页面左侧为「模拟家长对话」，右侧为顾问侧栏。家长发消息 → 生成建议 →「采纳并手动发送」写回左侧模拟窗，**不会**真实出站。落地路线见 `二期/二期-落地路线-LangGraph.md`。
 
 ## 测试
 

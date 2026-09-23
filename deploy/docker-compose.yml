@@ -1,3 +1,6 @@
+# 生产：app + postgres + redis
+# 用法见同目录 README.md
+
 services:
   postgres:
     image: postgres:16
@@ -29,11 +32,11 @@ services:
 
   app:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
     container_name: salesai-app
     env_file:
-      - .env.production
+      - .env
     environment:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis

@@ -119,56 +119,67 @@ const followup = computed(() => section("followup"));
 </script>
 
 <template>
-  <section class="card">
-    <h2>客户画像</h2>
-    <p class="muted">
-      生效画像 P1 · version {{ profile?.version ?? "-" }}
-      <span v-if="isDraftActionable"> · 草稿 {{ draftId }}</span>
-      <span v-else> · 确认/编辑/驳回需 URL draftId</span>
-    </p>
-    <p v-if="loading" class="muted">加载中…</p>
-    <p v-if="error" class="err">{{ error }}</p>
-    <p v-if="notice" class="ok">{{ notice }}</p>
-
-    <AiWatermark v-if="profile">
-      <div class="kv">
-        <div><b>基本</b> {{ basic.student_name || "-" }} / {{ basic.grade || "-" }} / {{ basic.school || "-" }}</div>
-        <div><b>学情</b> {{ JSON.stringify(study) }}</div>
-        <div><b>偏好</b> {{ JSON.stringify(preference) }}</div>
-        <div><b>跟进</b> {{ JSON.stringify(followup) }}</div>
+  <section class="card panel">
+    <div class="panel-head">
+      <div>
+        <h2>客户画像</h2>
+        <p class="muted">
+          生效画像 P1 · version {{ profile?.version ?? "-" }}
+          <span v-if="isDraftActionable"> · 草稿 {{ draftId }}</span>
+          <span v-else> · 确认/编辑/驳回需 URL draftId</span>
+        </p>
       </div>
-      <p v-if="profile.sources?.length" class="muted">
-        来源 {{ profile.sources.map((s) => `${s.field}@${s.confidence ?? "-"}`).join("；") }}
-      </p>
-    </AiWatermark>
-
-    <div class="field" style="margin-top: 8px">
-      <label>确认备注（可选）</label>
-      <input v-model="comment" maxlength="255" />
-    </div>
-    <div class="row" style="margin-top: 8px">
-      <button class="btn" type="button" :disabled="loading" @click="load">刷新</button>
-      <button class="btn primary" type="button" :disabled="!isDraftActionable" @click="confirm">确认</button>
-      <button class="btn" type="button" :disabled="!isDraftActionable" @click="editing = !editing">编辑</button>
-      <button class="btn danger" type="button" :disabled="!isDraftActionable" @click="rejectOpen = !rejectOpen">
-        驳回
-      </button>
     </div>
 
-    <div v-if="editing" class="list" style="margin-top: 8px">
+    <div class="stack">
+      <p v-if="loading" class="muted">加载中…</p>
+      <p v-if="error" class="err">{{ error }}</p>
+      <p v-if="notice" class="ok">{{ notice }}</p>
+
+      <AiWatermark v-if="profile">
+        <div class="kv profile-kv">
+          <div><b>基本</b><span>{{ basic.student_name || "-" }} / {{ basic.grade || "-" }} / {{ basic.school || "-" }}</span></div>
+          <div><b>学情</b><span>{{ JSON.stringify(study) }}</span></div>
+          <div><b>偏好</b><span>{{ JSON.stringify(preference) }}</span></div>
+          <div><b>跟进</b><span>{{ JSON.stringify(followup) }}</span></div>
+        </div>
+        <p v-if="profile.sources?.length" class="muted">
+          来源 {{ profile.sources.map((s) => `${s.field}@${s.confidence ?? "-"}`).join("；") }}
+        </p>
+      </AiWatermark>
+
       <div class="field">
-        <label>sections（仅 basic / study / preference / followup）</label>
-        <textarea v-model="sectionText" rows="8" />
+        <label>确认备注（可选）</label>
+        <input v-model="comment" maxlength="255" />
       </div>
-      <button class="btn primary" type="button" @click="saveEdit">保存并生效</button>
-    </div>
+      <div class="panel-actions">
+        <button class="btn" type="button" :disabled="loading" @click="load">刷新</button>
+        <button class="btn primary" type="button" :disabled="!isDraftActionable" @click="confirm">确认</button>
+        <button class="btn" type="button" :disabled="!isDraftActionable" @click="editing = !editing">编辑</button>
+        <button class="btn danger" type="button" :disabled="!isDraftActionable" @click="rejectOpen = !rejectOpen">
+          驳回
+        </button>
+      </div>
 
-    <div v-if="rejectOpen" class="list" style="margin-top: 8px">
-      <div class="field">
-        <label>驳回原因</label>
-        <input v-model="rejectReason" maxlength="255" />
+      <div v-if="editing" class="stack">
+        <div class="field">
+          <label>sections（仅 basic / study / preference / followup）</label>
+          <textarea v-model="sectionText" rows="8" />
+        </div>
+        <div class="panel-actions">
+          <button class="btn primary" type="button" @click="saveEdit">保存并生效</button>
+        </div>
       </div>
-      <button class="btn danger" type="button" @click="reject">提交驳回</button>
+
+      <div v-if="rejectOpen" class="stack">
+        <div class="field">
+          <label>驳回原因</label>
+          <input v-model="rejectReason" maxlength="255" />
+        </div>
+        <div class="panel-actions">
+          <button class="btn danger" type="button" @click="reject">提交驳回</button>
+        </div>
+      </div>
     </div>
   </section>
 </template>

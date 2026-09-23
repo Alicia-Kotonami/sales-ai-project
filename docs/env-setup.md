@@ -86,21 +86,10 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ## 8. 生产（app + postgres + redis）
 
-```bash
-cp .env.production.example .env.production
-```
-
-填写真实 `JWT_SECRET_KEY`、`POSTGRES_PASSWORD`。保持：
-
-- `APP_ENV=prod`
-- `APP_DEBUG=false`
-- `POSTGRES_HOST=postgres`
-- `REDIS_HOST=redis`
-
-启动：
+生产相关文件已集中到 **`deploy/`**，步骤见 `deploy/README.md`。
 
 ```bash
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+cd deploy
+cp .env.example .env
+docker compose --env-file .env up -d --build
 ```
-
-容器入口 `scripts/entrypoint.sh` 会先执行 `alembic upgrade head`，再启动 uvicorn。应用按环境变量连接同 compose 网络内的 postgres / redis，无需改代码。

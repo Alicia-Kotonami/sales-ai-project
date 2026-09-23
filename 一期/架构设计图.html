@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>销售赋能AI系统 - 架构设计图</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(135deg, #f5f7fa 0%, #e8edf5 100%);
+    color: #1f2937;
+    padding: 24px;
+    min-height: 100vh;
+  }
+  .container { max-width: 1400px; margin: 0 auto; }
+  .header {
+    text-align: center;
+    margin-bottom: 24px;
+    padding: 24px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  }
+  .header h1 { font-size: 28px; color: #1e40af; margin-bottom: 8px; }
+  .header .meta { color: #6b7280; font-size: 14px; }
+  .header .badges { margin-top: 12px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .badge-blue { background: #dbeafe; color: #1e40af; }
+  .badge-green { background: #d1fae5; color: #065f46; }
+  .badge-amber { background: #fef3c7; color: #92400e; }
+  .badge-red { background: #fee2e2; color: #991b1b; }
+
+  /* Layer Styles */
+  .layer {
+    background: white;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    border-left: 4px solid;
+  }
+  .layer-1 { border-color: #6366f1; } /* 接入层 */
+  .layer-2 { border-color: #8b5cf6; } /* 网关层 */
+  .layer-3 { border-color: #3b82f6; } /* 业务服务层 */
+  .layer-4 { border-color: #ec4899; } /* AI服务层 */
+  .layer-5 { border-color: #10b981; } /* 数据层 */
+  .layer-6 { border-color: #f59e0b; } /* 外部依赖 */
+
+  .layer-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .layer-num {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 14px;
+  }
+  .layer-1 .layer-num { background: #6366f1; }
+  .layer-2 .layer-num { background: #8b5cf6; }
+  .layer-3 .layer-num { background: #3b82f6; }
+  .layer-4 .layer-num { background: #ec4899; }
+  .layer-5 .layer-num { background: #10b981; }
+  .layer-6 .layer-num { background: #f59e0b; }
+  .layer-title { font-size: 16px; font-weight: 600; }
+  .layer-desc { font-size: 12px; color: #6b7280; margin-left: auto; }
+
+  .modules {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px;
+  }
+  .module {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+    transition: all 0.2s;
+  }
+  .module:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+  .module-icon { font-size: 24px; margin-bottom: 4px; }
+  .module-name { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+  .module-desc { font-size: 11px; color: #6b7280; }
+
+  /* Data Flow */
+  .dataflow {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    margin-top: 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+  .dataflow h2 {
+    color: #1e40af;
+    font-size: 20px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .flow-diagram {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+  }
+  .flow-step {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    border: 2px solid #93c5fd;
+    border-radius: 10px;
+    padding: 12px 20px;
+    text-align: center;
+    min-width: 280px;
+    font-size: 14px;
+  }
+  .flow-step strong { color: #1e40af; }
+  .flow-arrow {
+    color: #6b7280;
+    font-size: 20px;
+    line-height: 1;
+  }
+  .flow-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    width: 100%;
+    margin: 8px 0;
+  }
+  .flow-grid-item {
+    background: #fef3c7;
+    border: 2px solid #fbbf24;
+    border-radius: 8px;
+    padding: 10px;
+    text-align: center;
+    font-size: 13px;
+  }
+  .flow-grid-item.ai { background: #fce7f3; border-color: #f472b6; }
+
+  /* Module Matrix */
+  .matrix {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    margin-top: 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    overflow-x: auto;
+  }
+  .matrix h2 {
+    color: #1e40af;
+    font-size: 20px;
+    margin-bottom: 16px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  th, td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  th {
+    background: #f3f4f6;
+    font-weight: 600;
+    color: #374151;
+  }
+  tbody tr:hover { background: #f9fafb; }
+
+  /* Tech Stack */
+  .tech-stack {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    margin-top: 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+  .tech-stack h2 {
+    color: #1e40af;
+    font-size: 20px;
+    margin-bottom: 16px;
+  }
+  .tech-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+  }
+  .tech-card {
+    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+    border-left: 3px solid #0284c7;
+    padding: 12px;
+    border-radius: 6px;
+  }
+  .tech-card .label { font-size: 11px; color: #0369a1; font-weight: 600; }
+  .tech-card .value { font-size: 14px; font-weight: 600; color: #0c4a6e; margin: 4px 0; }
+  .tech-card .reason { font-size: 11px; color: #475569; }
+
+  /* Permission Matrix */
+  .perm-table th { background: #ddd6fe; color: #5b21b6; }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    margin-top: 24px;
+    padding: 16px;
+    color: #6b7280;
+    font-size: 12px;
+  }
+
+  /* Print styles */
+  @media print {
+    body { background: white; padding: 8px; }
+    .layer, .dataflow, .matrix, .tech-stack { box-shadow: none; border: 1px solid #e5e7eb; page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>销售赋能 AI 系统 — 系统架构设计图</h1>
+    <div class="meta">文档编号：HLD-2026-001 v2.0 ｜ 编制日期：2026-09-09</div>
+    <div class="badges">
+      <span class="badge badge-blue">前后端分离</span>
+      <span class="badge badge-blue">微服务</span>
+      <span class="badge badge-green">AI服务独立部署</span>
+      <span class="badge badge-amber">SSE流式</span>
+      <span class="badge badge-red">架构红线：禁止代发</span>
+    </div>
+  </div>
+
+  <!-- Layer 1: 接入层 -->
+  <div class="layer layer-1">
+    <div class="layer-header">
+      <div class="layer-num">①</div>
+      <div class="layer-title">接入层 — Access Layer</div>
+      <div class="layer-desc">用户交互入口</div>
+    </div>
+    <div class="modules">
+      <div class="module">
+        <div class="module-icon">💬</div>
+        <div class="module-name">企微智能侧边栏 (H5)</div>
+        <div class="module-desc">Vue/React，主要交互入口</div>
+      </div>
+      <div class="module">
+        <div class="module-icon">🖥️</div>
+        <div class="module-name">管理后台 (Web)</div>
+        <div class="module-desc">React + Ant Design，响应式</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layer 2: 网关层 -->
+  <div class="layer layer-2">
+    <div class="layer-header">
+      <div class="layer-num">②</div>
+      <div class="layer-title">网关层 — Gateway Layer</div>
+      <div class="layer-desc">APISIX / Kong</div>
+    </div>
+    <div class="modules">
+      <div class="module">
+        <div class="module-icon">🔐</div>
+        <div class="module-name">OAuth/JWT 鉴权</div>
+        <div class="module-desc">企微OAuth → JWT</div>
+      </div>
+      <div class="module">
+        <div class="module-icon">🚧</div>
+        <div class="module-name">限流</div>
+        <div class="module-desc">300顾问×5倍突发</div>
+      </div>
+      <div class="module">
+        <div class="module-icon">📋</div>
+        <div class="module-name">审计</div>
+        <div class="module-desc">全链路日志</div>
+      </div>
+      <div class="module">
+        <div class="module-icon">🌊</div>
+        <div class="module-name">SSE适配</div>
+        <div class="module-desc">首字≤200ms</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layer 3: 业务服务层 -->
+  <div class="layer layer-3">
+    <div class="layer-header">
+      <div class="layer-num">③</div>
+      <div class="layer-title">业务服务层 — Microservices</div>
+      <div class="layer-desc">Python · 与SRS五大模块一一对应</div>
+    </div>
+    <div class="modules">
+      <div class="module" style="border-color:#3b82f6;">
+        <div class="module-icon">👤</div>
+        <div class="module-name">profile-service</div>
+        <div class="module-desc">客户画像 · 草稿状态机 · SSE推送</div>
+      </div>
+      <div class="module" style="border-color:#3b82f6;">
+        <div class="module-icon">💡</div>
+        <div class="module-name">reply-suggest-service</div>
+        <div class="module-desc">回复建议 · 场景识别 · 多模态</div>
+      </div>
+      <div class="module" style="border-color:#3b82f6;">
+        <div class="module-icon">🏷️</div>
+        <div class="module-name">tag-service</div>
+        <div class="module-desc">智能标签 · SOP关联 · 防泛滥</div>
+      </div>
+      <div class="module" style="border-color:#3b82f6;">
+        <div class="module-icon">📅</div>
+        <div class="module-name">schedule-service</div>
+        <div class="module-desc">日程提醒 · 时间语义 · 企微日历</div>
+      </div>
+      <div class="module" style="border-color:#3b82f6;">
+        <div class="module-icon">⚙️</div>
+        <div class="module-name">admin-service</div>
+        <div class="module-desc">员工/客户/订单 · 看板 · 采纳率</div>
+      </div>
+      <div class="module" style="border-color:#8b5cf6;">
+        <div class="module-icon">📡</div>
+        <div class="module-name">event-bus</div>
+        <div class="module-desc">事件总线 · 发布订阅</div>
+      </div>
+      <div class="module" style="border-color:#8b5cf6;">
+        <div class="module-icon">📁</div>
+        <div class="module-name">object-service</div>
+        <div class="module-desc">文件服务</div>
+      </div>
+      <div class="module" style="border-color:#8b5cf6;">
+        <div class="module-icon">🔍</div>
+        <div class="module-name">audit-service</div>
+        <div class="module-desc">审计 · 全链路记录</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layer 4: AI服务层 -->
+  <div class="layer layer-4">
+    <div class="layer-header">
+      <div class="layer-num">④</div>
+      <div class="layer-title">AI 服务层 — AI Layer (独立部署)</div>
+      <div class="layer-desc">Python (FastAPI + gRPC) · 独立扩缩容</div>
+    </div>
+    <div class="modules">
+      <div class="module">
+        <div class="module-icon">🧠</div>
+        <div class="module-name">画像推理</div>
+        <div class="module-desc">事件抽取 + 画像生成</div>
+      </div>
+      <div class="module">
+        <div class="module-icon">✍️</div>
+        <div class="module-name">回复建议推理</div>
+        <div class="module-desc">上下文组装 + 流式输出</div>
+      </div>
+      <div class="module">
+        <div class="module-icon">🎯</div>
+        <div class="module-name">标签推理</div>
+        <div class="module-desc">标签增删建议</div>
+      </div>
+      <div class="module">
+        <div class="module-icon">⏰</div>
+        <div class="module-name">时间语义解析</div>
+        <div class="module-desc">自然语言 → 时间戳</div>
+      </div>
+      <div class="module">
+        <div class="module-icon">🎙️</div>
+        <div class="module-name">ASR适配</div>
+        <div class="module-desc">语音转写</div>
+      </div>
+      <div class="module" style="border-color:#ec4899;background:#fdf2f8;">
+        <div class="module-icon">🚦</div>
+        <div class="module-name">模型网关</div>
+        <div class="module-desc">多模型灰度/A-B/降级</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layer 5: 数据层 -->
+  <div class="layer layer-5">
+    <div class="layer-header">
+      <div class="layer-num">⑤</div>
+      <div class="layer-title">数据层 — Data Layer</div>
+      <div class="layer-desc">混合存储 · 读写分离</div>
+    </div>
+    <div class="modules">
+      <div class="module">
+        <div class="module-icon">🗄️</div>
+        <div class="module-name">PostgreSQL</div>
+        <div class="module-desc">关系数据 · 事务 · 主从+自动切换</div>
+      </div>
+      <div class="module">
+        <div class="module-icon">⚡</div>
+        <div class="module-name">Redis (含 Stream)</div>
+        <div class="module-desc">画像缓存/会话/限流/事件流</div>
+      </div>
+      <div class="module">
+        <div class="module-icon">🧬</div>
+        <div class="module-name">向量库 (Milvus)</div>
+        <div class="module-desc">RAG话术库</div>
+      </div>
+      <div class="module">
+        <div class="module-icon">📦</div>
+        <div class="module-name">对象存储</div>
+        <div class="module-desc">语音/文件原始</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layer 6: 外部依赖 -->
+  <div class="layer layer-6">
+    <div class="layer-header">
+      <div class="layer-num">⑥</div>
+      <div class="layer-title">外部依赖 — External</div>
+      <div class="layer-desc">第三方服务</div>
+    </div>
+    <div class="modules">
+      <div class="module">
+        <div class="module-icon">🏢</div>
+        <div class="module-name">企业微信开放平台</div>
+        <div class="module-desc">身份/回调/日历</div>
+      </div>
+      <div class="module">
+        <div class="module-icon">🗣️</div>
+        <div class="module-name">ASR/TTS 服务</div>
+        <div class="module-desc">语音转写</div>
+      </div>
+      <div class="module">
+        <div class="module-icon">🤖</div>
+        <div class="module-name">LLM API</div>
+        <div class="module-desc">大语言模型 (可选)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data Flow -->
+  <div class="dataflow">
+    <h2>🌊 核心数据流（家长发消息 → 顾问操作）</h2>
+    <div class="flow-diagram">
+      <div class="flow-step">
+        <strong>① 家长发消息</strong>（文本 / 语音）
+      </div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step">
+        <strong>② 企微回调 → 网关验签</strong> → 写入 <code>stream:chat:message-received</code>
+      </div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-grid">
+        <div class="flow-grid-item">🎙️ ASR<br/>（语音转写）</div>
+        <div class="flow-grid-item ai">🧠 画像推理</div>
+        <div class="flow-grid-item ai">💡 回复建议</div>
+        <div class="flow-grid-item ai">🏷️ 标签推理</div>
+      </div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step">
+        <strong>③ 文本回注 + 各推理结果</strong><br/>
+        profile.draft.generated / suggestion.generated / tag.recommend.generated
+      </div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step">
+        <strong>④ SSE 推送到侧边栏</strong><br/>
+        画像草稿 + 候选回复 + 标签推荐 + 待办
+      </div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step">
+        <strong>⑤ 顾问操作</strong>：采纳 / 编辑 / 驳回 / 手动发送
+      </div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step">
+        <strong>⑥ adoption.recorded</strong> → 采纳率统计 + 在线学习反馈
+      </div>
+    </div>
+  </div>
+
+  <!-- Module Matrix -->
+  <div class="matrix">
+    <h2>📋 模块职责矩阵</h2>
+    <table>
+      <thead>
+        <tr><th>模块</th><th>服务名</th><th>核心职责</th><th>输入</th><th>输出</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>客户画像</td><td>profile-service</td><td>数据采集、抽取、画像推理、草稿状态机、SSE推送</td><td>聊天/订单/客服事件</td><td>画像草稿（带置信度+来源）</td></tr>
+        <tr><td>回复建议</td><td>reply-suggest-service</td><td>场景识别、上下文组装、多模态适配、建议生成</td><td>当前消息+画像+历史</td><td>候选回复列表</td></tr>
+        <tr><td>智能标签</td><td>tag-service</td><td>标签体系、SOP关联、标签推荐、防泛滥校验</td><td>聊天行为+画像</td><td>标签增删建议</td></tr>
+        <tr><td>日程提醒</td><td>schedule-service</td><td>时间语义解析、周期预测、企微日历同步、分级提醒</td><td>聊天文本+订单数据</td><td>待办任务+分级提醒</td></tr>
+        <tr><td>管理后台</td><td>admin-service</td><td>员工/客户/订单/标签管理、看板、采纳率统计</td><td>管理员操作</td><td>配置+报表</td></tr>
+        <tr><td>事件总线</td><td>event-bus</td><td>消息事件的发布订阅、削峰</td><td>各服务事件</td><td>异步分发</td></tr>
+        <tr><td>审计服务</td><td>audit-service</td><td>AI输出、采纳/拒绝、操作日志全链路记录</td><td>各服务埋点</td><td>审计流水</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Tech Stack -->
+  <div class="tech-stack">
+    <h2>🛠️ 技术选型</h2>
+    <div class="tech-grid">
+      <div class="tech-card">
+        <div class="label">API网关</div>
+        <div class="value">APISIX / Kong</div>
+        <div class="reason">原生支持 SSE 长连接、插件生态</div>
+      </div>
+      <div class="tech-card">
+        <div class="label">业务服务</div>
+        <div class="value">Python</div>
+        <div class="reason">高并发、部署轻量</div>
+      </div>
+      <div class="tech-card">
+        <div class="label">AI 服务</div>
+        <div class="value">Python (FastAPI + gRPC)</div>
+        <div class="reason">模型生态成熟</div>
+      </div>
+      <div class="tech-card">
+        <div class="label">侧边栏前端</div>
+        <div class="value">企微侧边栏 H5 (Vue/React)</div>
+        <div class="reason">企微强制规范</div>
+      </div>
+      <div class="tech-card">
+        <div class="label">管理后台</div>
+        <div class="value">React + Ant Design + workflow 架构</div>
+        <div class="reason">响应式，多终端</div>
+      </div>
+      <div class="tech-card">
+        <div class="label">数据库</div>
+        <div class="value">PostgreSQL</div>
+        <div class="reason">关系数据、事务</div>
+      </div>
+      <div class="tech-card">
+        <div class="label">缓存 & 消息</div>
+        <div class="value">Redis Cluster + Stream</div>
+        <div class="reason">画像缓存/限流/轻量事件流</div>
+      </div>
+      <div class="tech-card">
+        <div class="label">向量库</div>
+        <div class="value">Milvus</div>
+        <div class="reason">RAG话术库</div>
+      </div>
+      <div class="tech-card">
+        <div class="label">流式协议</div>
+        <div class="value">SSE</div>
+        <div class="reason">NFR-1 明确</div>
+      </div>
+      <div class="tech-card">
+        <div class="label">监控</div>
+        <div class="value">Prometheus + Grafana + ELK</div>
+        <div class="reason">可观测性</div>
+      </div>
+      <div class="tech-card">
+        <div class="label">链路追踪</div>
+        <div class="value">OpenTelemetry</div>
+        <div class="reason">端到端 trace</div>
+      </div>
+      <div class="tech-card">
+        <div class="label">部署</div>
+        <div class="value">K8s 跨可用区 ≥2 实例</div>
+        <div class="reason">高可用、独立扩缩容</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Permission Matrix -->
+  <div class="matrix">
+    <h2>🔐 权限矩阵（三层角色 × 数据范围）</h2>
+    <table class="perm-table">
+      <thead>
+        <tr><th>角色</th><th>侧边栏</th><th>客户数据</th><th>标签配置</th><th>看板</th><th>员工管理</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>普通顾问</td><td>✅</td><td>仅本人</td><td>只读</td><td>❌</td><td>❌</td></tr>
+        <tr><td>区域主管</td><td>✅</td><td>本区域</td><td>✅</td><td>本区域</td><td>本区域</td></tr>
+        <tr><td>超级管理员</td><td>✅</td><td>全部</td><td>✅</td><td>全部</td><td>全部</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:12px;font-size:13px;color:#6b7280;">
+      数据范围校验在 <strong>网关层（粗粒度）</strong> + <strong>服务层（数据范围过滤，强制注入 advisor_id 条件）</strong>。
+    </p>
+  </div>
+
+  <!-- 异步事件主题 -->
+  <div class="matrix">
+    <h2>📨 Redis Stream 异步事件主题</h2>
+    <table>
+      <thead>
+        <tr><th>Key</th><th>生产者</th><th>消费者</th><th>用途</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>stream:chat:message-received</code></td><td>网关</td><td>asr / profile / tag / schedule</td><td>新消息触发全链路</td></tr>
+        <tr><td><code>stream:chat:message-asr-done</code></td><td>ASR</td><td>profile / reply</td><td>转写完成</td></tr>
+        <tr><td><code>stream:profile:draft-generated</code></td><td>画像推理</td><td>push-gateway</td><td>触发 SSE</td></tr>
+        <tr><td><code>stream:reply:suggestion-generated</code></td><td>回复推理</td><td>push-gateway</td><td>触发 SSE</td></tr>
+        <tr><td><code>stream:tag:recommend-generated</code></td><td>标签推理</td><td>push-gateway</td><td>触发 SSE</td></tr>
+        <tr><td><code>stream:schedule:task-suggested</code></td><td>日程解析</td><td>push-gateway</td><td>待办建议</td></tr>
+        <tr><td><code>stream:adoption:recorded</code></td><td>各业务服务</td><td>stat / online-learning</td><td>采纳回写</td></tr>
+        <tr><td><code>stream:customer:owner-changed</code></td><td>admin</td><td>profile / schedule</td><td>离职交接联动</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 架构红线 -->
+  <div class="dataflow" style="border:2px solid #ef4444;background:#fef2f2;">
+    <h2 style="color:#dc2626;">⛔ 架构红线（FR-2.C1~C4，已写入合同）</h2>
+    <ul style="list-style:none;padding:0;">
+      <li style="padding:8px 0;border-bottom:1px solid #fecaca;">
+        <strong>🔴 C1：</strong>禁止调用企业微信「代发消息」API
+      </li>
+      <li style="padding:8px 0;border-bottom:1px solid #fecaca;">
+        <strong>🔴 C2：</strong>AI 输出仅渲染为建议卡片，发送动作由顾问在企微原生窗口手动完成
+      </li>
+      <li style="padding:8px 0;border-bottom:1px solid #fecaca;">
+        <strong>🔴 C3：</strong>UI 对 AI 内容永久标注「AI 建议」
+      </li>
+      <li style="padding:8px 0;">
+        <strong>🔴 C4：</strong>PR checklist + 代码扫描强制拦截代发相关代码
+      </li>
+    </ul>
+  </div>
+
+  <div class="footer">
+    销售赋能 AI 系统 · 概要设计 v2.0 · 2026-09-09 · 待评审
+  </div>
+</div>
+</body>
+</html>

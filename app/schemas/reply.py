@@ -14,6 +14,7 @@ class SuggestRequest(BaseModel):
     customerId: int = Field(gt=0)
     currentMessage: CurrentMessage
     scenarioHint: str | None = None  # 仅提示，最终服务端自己判断
+    preferMode: Literal["legacy", "rag", "agent"] | None = None  # 调试用
 
 
 class SuggestDone(BaseModel):
@@ -21,6 +22,12 @@ class SuggestDone(BaseModel):
     profileVersion: int
     latencyMs: int
     eventId: int
+    mode: str = "legacy"
+    runId: int | None = None
+    fallback: bool = False
+    status: str | None = None
+    citations: list[Any] = Field(default_factory=list)
+    uncertaintyNotes: list[Any] = Field(default_factory=list)
 
 
 class SuggestFeedbackRequest(BaseModel):

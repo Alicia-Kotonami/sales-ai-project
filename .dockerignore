@@ -12,8 +12,8 @@ htmlcov
 
 .env
 .env.local
-.env.production
 .env.*.local
+deploy/.env
 
 一期
 templete

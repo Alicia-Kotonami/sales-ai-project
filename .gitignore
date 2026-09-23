@@ -1,66 +1,87 @@
-# Python
+# ========== 密钥 / 本地环境（只保留 *.example）==========
+.env
+.env.*
+!.env.example
+!deploy/.env.example
+!ai_runtime/.env.example
+
+# ========== Python ==========
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg-info/
-# 原生venv环境（你不用，注释保留）
-# .venv/
-# venv/
-# env/
-.env
-.env.local
-.env.production
-
-# Conda
-# 👉 只有用 --prefix 在项目本地创建conda环境才启用下面一行，全局conda环境不需要
-# .conda-env/
-
-# IDE - PyCharm
-.idea/
-out/
+*.egg
+.Python
+dist/
 build/
+wheels/
+pip-wheel-metadata/
+*.manifest
+*.spec
+.venv/
+venv/
+env/
+.env/
+.conda-env/
+
+# ========== 测试 / 覆盖率 / 静态检查 ==========
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
+.cache/
+
+# ========== IDE / 编辑器 ==========
+.idea/
+.vscode/
 *.iml
 *.iws
 *.ipr
 .idea_modules/
+*.swp
+*.swo
+*~
 
-# OS
+# ========== OS ==========
 .DS_Store
 Thumbs.db
+desktop.ini
+ehthumbs.db
 
-# 日志
+# ========== 日志 / 临时 ==========
 *.log
+*.tmp
+*.temp
+*.bak
+*.orig
+*_extract*.txt
 
-# 【可选推荐追加】测试 & 静态检查缓存
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-.coverage
-htmlcov/
-coverage.xml
+# ========== 运行时数据（知识库上传 / 向量索引）==========
+data/kb_vectors/
+data/kb_uploads/*
+!data/kb_uploads/.gitkeep
 
-# 一期文档目录
-一期/
-
-# 企微侧边栏前端
+# ========== 前端（依赖与构建产物）==========
 sidebar/node_modules/
 sidebar/dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
+# ========== Cursor / 本地 AI 辅助 ==========
+.cursor/
+task.md
 
-
-
-## Python
-#__pycache__/
-#*.py[cod]
-#*.egg-info/
-#.env
-#
-## IDE
-#.idea/
-#.vscode/
-#
-## OS
-#.DS_Store
-#Thumbs.db
-#
-## 日志
-#*.log
+# ========== 杂项 ==========
+templete/
+.docker/
+*.pem
+*.key
+!*.example.key

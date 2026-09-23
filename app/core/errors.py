@@ -19,6 +19,12 @@ class ErrorCode(IntEnum):
     AI_TIMEOUT = 5002             # AI 推理超时（>3s 熔断）
     ASR_FAILED = 5003             # ASR 转写失败
 
+    # 52xx 二期知识库 / Agent
+    KB_NOT_READY = 5201           # 知识库未就绪 / 发布冲突
+    AGENT_DISABLED = 5202         # 综合推理已关停
+    AGENT_RUN_INVALID = 5203      # Agent Run 不可操作
+    KB_PARSE_FAILED = 5204        # 向量/解析任务失败
+
     # 9xxx
     WECOM_SIGN_INVALID = 9001     # 企微回调验签失败
     UNKNOWN = 9999                # 未知服务端错误
@@ -36,6 +42,10 @@ HTTP_STATUS_MAP: dict[int, int] = {
     ErrorCode.AI_BUSY: 503,
     ErrorCode.AI_TIMEOUT: 504,
     ErrorCode.ASR_FAILED: 503,
+    ErrorCode.KB_NOT_READY: 409,
+    ErrorCode.AGENT_DISABLED: 503,
+    ErrorCode.AGENT_RUN_INVALID: 409,
+    ErrorCode.KB_PARSE_FAILED: 500,
     ErrorCode.WECOM_SIGN_INVALID: 401,
     ErrorCode.UNKNOWN: 500,
 }
@@ -68,6 +78,10 @@ class BizError(Exception):
             ErrorCode.AI_BUSY: "AI 服务暂忙，请稍后重试",
             ErrorCode.AI_TIMEOUT: "AI 推理超时",
             ErrorCode.ASR_FAILED: "语音识别失败",
+            ErrorCode.KB_NOT_READY: "知识库未就绪或发布冲突",
+            ErrorCode.AGENT_DISABLED: "综合推理已关停",
+            ErrorCode.AGENT_RUN_INVALID: "推理任务不可操作",
+            ErrorCode.KB_PARSE_FAILED: "知识库解析失败",
             ErrorCode.WECOM_SIGN_INVALID: "企微回调验签失败",
             ErrorCode.UNKNOWN: "服务端未知错误",
         }.get(code, "未知错误")

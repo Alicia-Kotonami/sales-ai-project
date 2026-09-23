@@ -136,55 +136,64 @@ async function syncWechat(task: ScheduleTaskItem): Promise<void> {
 </script>
 
 <template>
-  <section class="card">
-    <h2>今日日程</h2>
-    <p class="muted">
-      {{ today?.date || "-" }} · 逾期 {{ today?.overdueCnt ?? 0 }} · 只改时间/完成/取消
-    </p>
-    <p v-if="loading" class="muted">加载中…</p>
-    <p v-if="error" class="err">{{ error }}</p>
-    <p v-if="notice" class="ok">{{ notice }}</p>
-
-    <div class="list">
-      <div v-for="task in today?.list || []" :key="task.taskId" class="item">
-        <div>
-          <b>{{ task.title }}</b>
-          <span class="muted"> · {{ TYPE_LABEL[task.type] || task.type }} · {{ STATUS_LABEL[task.status] }}</span>
-        </div>
-        <div class="muted">{{ task.customerNameMasked }} · 日历 {{ task.calendarTitle || "-" }}</div>
-        <div class="field" style="margin-top: 6px">
-          <label>到期时间</label>
-          <input v-model="dueEdits[task.taskId]" type="datetime-local" />
-        </div>
-        <div class="row" style="margin-top: 6px">
-          <button
-            class="btn"
-            type="button"
-            @click="adjust(task, { dueAt: fromLocalInput(dueEdits[task.taskId]) })"
-          >
-            调整时间
-          </button>
-          <button class="btn" type="button" @click="adjust(task, { status: 2 })">完成</button>
-          <button class="btn danger" type="button" @click="adjust(task, { status: 3 })">取消</button>
-          <button class="btn" type="button" @click="syncWechat(task)">同步日历</button>
-        </div>
+  <section class="card panel">
+    <div class="panel-head">
+      <div>
+        <h2>今日日程</h2>
+        <p class="muted">
+          {{ today?.date || "-" }} · 逾期 {{ today?.overdueCnt ?? 0 }} · 只改时间/完成/取消
+        </p>
       </div>
-      <p v-if="today && !today.list.length" class="muted">今日暂无待办</p>
     </div>
 
-    <div class="field" style="margin-top: 10px">
-      <label>从聊天解析待办</label>
-      <textarea v-model="parseText" rows="2" />
-    </div>
-    <div class="row" style="margin-top: 6px">
-      <button class="btn" type="button" @click="parse">解析</button>
-      <button class="btn" type="button" @click="load">刷新今日</button>
-    </div>
-    <div v-if="candidates.length" class="list" style="margin-top: 8px">
-      <div v-for="(c, i) in candidates" :key="i" class="item">
-        <div>{{ c.task }} · {{ c.parsedAt }}</div>
-        <div class="muted">{{ c.rawTime }} · {{ c.priority }} · {{ c.confidence }}</div>
-        <button class="btn primary" type="button" @click="createFrom(c)">确认创建</button>
+    <div class="stack">
+      <p v-if="loading" class="muted">加载中…</p>
+      <p v-if="error" class="err">{{ error }}</p>
+      <p v-if="notice" class="ok">{{ notice }}</p>
+
+      <div class="list">
+        <div v-for="task in today?.list || []" :key="task.taskId" class="item">
+          <div>
+            <b>{{ task.title }}</b>
+            <span class="muted"> · {{ TYPE_LABEL[task.type] || task.type }} · {{ STATUS_LABEL[task.status] }}</span>
+          </div>
+          <div class="muted">{{ task.customerNameMasked }} · 日历 {{ task.calendarTitle || "-" }}</div>
+          <div class="field">
+            <label>到期时间</label>
+            <input v-model="dueEdits[task.taskId]" type="datetime-local" />
+          </div>
+          <div class="panel-actions">
+            <button
+              class="btn"
+              type="button"
+              @click="adjust(task, { dueAt: fromLocalInput(dueEdits[task.taskId]) })"
+            >
+              调整时间
+            </button>
+            <button class="btn" type="button" @click="adjust(task, { status: 2 })">完成</button>
+            <button class="btn danger" type="button" @click="adjust(task, { status: 3 })">取消</button>
+            <button class="btn" type="button" @click="syncWechat(task)">同步日历</button>
+          </div>
+        </div>
+        <p v-if="today && !today.list.length" class="muted">今日暂无待办</p>
+      </div>
+
+      <div class="field">
+        <label>从聊天解析待办</label>
+        <textarea v-model="parseText" rows="2" />
+      </div>
+      <div class="panel-actions">
+        <button class="btn" type="button" @click="parse">解析</button>
+        <button class="btn" type="button" @click="load">刷新今日</button>
+      </div>
+      <div v-if="candidates.length" class="list">
+        <div v-for="(c, i) in candidates" :key="i" class="item">
+          <div>{{ c.task }} · {{ c.parsedAt }}</div>
+          <div class="muted">{{ c.rawTime }} · {{ c.priority }} · {{ c.confidence }}</div>
+          <div class="panel-actions">
+            <button class="btn primary" type="button" @click="createFrom(c)">确认创建</button>
+          </div>
+        </div>
       </div>
     </div>
   </section>

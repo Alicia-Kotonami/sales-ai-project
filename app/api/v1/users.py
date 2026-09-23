@@ -1,25 +1,16 @@
-from fastapi import APIRouter, Body, Depends
-from sqlalchemy import select
+"""用户接口：当前顾问偏好与通知。"""
+
+from fastapi import APIRouter, Body, Depends, Path, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
-from app.core.errors import BizError, ErrorCode
 from app.core.response import ok
 from app.db.session import get_db
 from app.models import SysUser
-from app.schemas.schedule import (
-    NotificationPreferenceRequest,
-)
-from app.services.audit_service import write_audit
+from app.schemas.schedule import NotificationPreferenceRequest
+from app.services import user_service
 
 router = APIRouter(prefix="/users", tags=["user"])
-
-NOTIFY_PREF_WHITELIST = {
-    "notify.p0.channel",
-    "notify.p1.channel",
-    "notify.p2.channel",
-    "notify.p3.channel",
-}
 
 
 @router.put("/me/notification-preference")
@@ -28,33 +19,35 @@ async def update_notification_preference(
     db: AsyncSession = Depends(get_db),
     user: SysUser = Depends(get_current_user),
 ):
-    patch: dict[str, str] = {}
-    for item in body.items:
-        if item.prefKey not in NOTIFY_PREF_WHITELIST:
-            raise BizError(ErrorCode.PARAM_INVALID, f"不支持的 prefKey: {item.prefKey}")
-        patch[item.prefKey] = item.prefValue
+    """
+    S6：更新当前用户提醒渠道偏好。
+    仅允许 notify.p0~p3.channel；业务见 ``user_service``。
+    """
+    data = await user_service.update_notification_preference(db, user=user, body=body)
+    return ok(data)
 
-    stmt = (
-        select(SysUser)
-        .where(SysUser.id == user.id, SysUser.is_deleted.is_(False))
-        .with_for_update()
+
+@router.get("/me/notifications")
+async def list_my_notifications(
+    unreadOnly: bool = Query(default=False),
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    user: SysUser = Depends(get_current_user),
+):
+    data = await user_service.list_my_notifications(
+        db, user=user, unread_only=unreadOnly, page=page, page_size=pageSize
     )
-    u = (await db.execute(stmt)).scalar_one_or_none()
-    if u is None:
-        raise BizError(ErrorCode.NOT_FOUND, "用户不存在")
+    return ok(data)
 
-    prefs = dict(u.prefs_json or {})
-    prefs.update(patch)
-    u.prefs_json = prefs
 
-    await write_audit(
-        db,
-        actor_id=user.id,
-        action="user.pref_update",
-        target_type="sys_user",
-        target_id=user.id,
-        payload={"patch": patch},
+@router.post("/me/notifications/{notificationId}/read")
+async def mark_notification_read(
+    notificationId: int = Path(..., gt=0),
+    db: AsyncSession = Depends(get_db),
+    user: SysUser = Depends(get_current_user),
+):
+    data = await user_service.mark_notification_read(
+        db, user=user, notification_id=notificationId
     )
-    await db.commit()
-
-    return ok({"items": [{"prefKey": k, "prefValue": v} for k, v in prefs.items()]})
+    return ok(data)

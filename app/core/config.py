@@ -28,11 +28,22 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 120
 
-    # AI 网关（mock | remote）。remote 基址走 AI_REMOTE_BASE_URL
+    # AI 网关（mock | remote）。remote 基址指向独立 ai_runtime（默认 :9000）
     AI_MODE: str = "mock"
     AI_GATEWAY_BASE_URL: str = "http://127.0.0.1:9000"
     AI_REMOTE_BASE_URL: str = "http://127.0.0.1:9000"
-    AI_TIMEOUT_SECONDS: int = 3
+    # DeepSeek 流式首字可能 >3s，remote 建议 8～15
+    AI_TIMEOUT_SECONDS: int = 8
+
+    # 二期：RAG / Agent
+    RAG_SCORE_THRESHOLD: float = 0.35
+    AGENT_MAX_STEPS: int = 3
+    AGENT_TIMEOUT_SECONDS: float = 5.0
+    KB_UPLOAD_DIR: str = "data/kb_uploads"
+    # 本地向量索引目录（Milvus 轻量替代）
+    KB_VECTOR_DIR: str = "data/kb_vectors"
+    # 向量召回权重；关键词权重 = 1 - VECTOR_SEARCH_WEIGHT
+    VECTOR_SEARCH_WEIGHT: float = 0.65
 
     # 企业微信
     WECOM_CORP_ID: str = ""

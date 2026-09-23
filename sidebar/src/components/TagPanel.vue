@@ -117,44 +117,51 @@ async function recommend(): Promise<void> {
 </script>
 
 <template>
-  <section class="card">
-    <h2>固定关键标签</h2>
-    <p class="muted">目录下拉勾选，禁止自由填写。AI 推荐仅作提示，生效走勾选。</p>
-    <p v-if="loading" class="muted">加载中…</p>
-    <p v-if="error" class="err">{{ error }}</p>
-    <p v-if="notice" class="ok">{{ notice }}</p>
-    <p v-if="reconnectHint" class="muted">{{ reconnectHint }}</p>
-
-    <div v-for="[cat, items] in grouped" :key="cat" class="field" style="margin-top: 8px">
-      <label>{{ CATEGORY_LABEL[cat] || cat }}</label>
-      <div class="list">
-        <label v-for="tag in items" :key="tag.tagId" class="item" style="display: flex; gap: 8px; align-items: center">
-          <input
-            type="checkbox"
-            :checked="selectedIds.has(tag.tagId)"
-            @change="toggle(tag, ($event.target as HTMLInputElement).checked)"
-          />
-          <span>{{ tag.name }}</span>
-          <span class="muted">{{ tag.code }}</span>
-        </label>
+  <section class="card panel">
+    <div class="panel-head">
+      <div>
+        <h2>固定关键标签</h2>
+        <p class="muted">目录勾选，禁止自由填写。AI 推荐仅提示，生效走勾选。</p>
       </div>
     </div>
 
-    <div class="row" style="margin-top: 8px">
-      <button class="btn" type="button" @click="load">刷新已选</button>
-      <button class="btn primary" type="button" :disabled="streaming" @click="recommend">拉 AI 推荐</button>
-    </div>
+    <div class="stack">
+      <p v-if="loading" class="muted">加载中…</p>
+      <p v-if="error" class="err">{{ error }}</p>
+      <p v-if="notice" class="ok">{{ notice }}</p>
+      <p v-if="reconnectHint" class="muted">{{ reconnectHint }}</p>
 
-    <div v-if="recs.length" class="list" style="margin-top: 8px">
-      <AiWatermark v-for="(rec, idx) in recs" :key="`${rec.tagId}-${idx}`">
-        <div class="item" style="border: none; padding-top: 22px">
-          <div>
-            <span class="badge">{{ rec.action === "uncheck" ? "建议取消" : "建议勾选" }}</span>
-            {{ rec.tagName }}
-          </div>
-          <p class="muted">{{ rec.reason }} · 置信度 {{ rec.confidence ?? "-" }}</p>
+      <div v-for="[cat, items] in grouped" :key="cat" class="field">
+        <label>{{ CATEGORY_LABEL[cat] || cat }}</label>
+        <div class="tag-list">
+          <label v-for="tag in items" :key="tag.tagId" class="tag-check">
+            <input
+              type="checkbox"
+              :checked="selectedIds.has(tag.tagId)"
+              @change="toggle(tag, ($event.target as HTMLInputElement).checked)"
+            />
+            <span class="tag-check-name">{{ tag.name }}</span>
+            <span class="muted">{{ tag.code }}</span>
+          </label>
         </div>
-      </AiWatermark>
+      </div>
+
+      <div class="panel-actions">
+        <button class="btn" type="button" @click="load">刷新已选</button>
+        <button class="btn primary" type="button" :disabled="streaming" @click="recommend">拉 AI 推荐</button>
+      </div>
+
+      <div v-if="recs.length" class="list">
+        <AiWatermark v-for="(rec, idx) in recs" :key="`${rec.tagId}-${idx}`">
+          <div class="item suggest-item">
+            <div>
+              <span class="badge">{{ rec.action === "uncheck" ? "建议取消" : "建议勾选" }}</span>
+              {{ rec.tagName }}
+            </div>
+            <p class="muted">{{ rec.reason }} · 置信度 {{ rec.confidence ?? "-" }}</p>
+          </div>
+        </AiWatermark>
+      </div>
     </div>
   </section>
 </template>

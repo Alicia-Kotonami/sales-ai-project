@@ -1,5 +1,8 @@
 """
-AI 远端契约参考实现，仅供本地联调，不进生产。
+AI 远端契约参考桩，仅供无 DeepSeek 时的本地联调，不进生产。
+
+生产 / 正式联调请起独立模块 ai_runtime/（见 ai_runtime/README.md、scripts/start-ai.ps1）。
+本文件仍产出双候选，与一期拍板「remote 单候选」不一致；单候选请用 ai_runtime。
 
     python -m uvicorn scripts.mock_ai_remote:app --host 127.0.0.1 --port 9000
 """
